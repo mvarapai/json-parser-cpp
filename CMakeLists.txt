@@ -10,4 +10,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 # Add include and source directories
 include_directories(src/include)
 
-add_executable(json-parser-cpp src/main.cpp  "src/utilstr.cpp" "src/include/utilstr.h")
+add_executable(json-parser-cpp src/main.cpp  "src/utilstr.cpp"
+"src/include/utilstr.h" "src/include/json_parser.h" "src/json_parser.cpp")
