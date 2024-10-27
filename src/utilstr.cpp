@@ -93,3 +93,18 @@ std::string utilstr::TrimOneChar(std::string str)
 
     return str;
 }
+
+// TODO: ignore {} and []
+bool utilstr::Split(std::string src, char delimiter, std::string& substring, size_t& prevPos)
+{
+    if (prevPos > src.size()) return false;
+
+    size_t pos = src.find(delimiter, prevPos);
+    if (pos == std::string::npos) pos = src.size();
+
+    substring = src.substr(prevPos, (pos - prevPos));
+    prevPos = pos + 1;
+
+    return true;
+}
+

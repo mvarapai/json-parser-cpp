@@ -7,11 +7,11 @@
 int main()
 {
     std::string jsonPath = "json\\";
-    std::string filename = "test2.json";
+    std::string filename = "test1.json";
     
-    //JSON json = JSON::ReadFromFile(jsonPath + filename);
+    JSON json = JSON::ReadFromFile(jsonPath + filename);
 
-    std::cout << utilstr::TrimOneChar("alloha") << std::endl;
+    
 
     return 0;
 }

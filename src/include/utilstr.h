@@ -40,4 +40,9 @@ namespace utilstr
     //  Trims any character from the beginning and the end of the string.
     //  If length < 2, returns empty string.
     std::string TrimOneChar(std::string str);
+
+    //  String split function. Supposed to be used in a while loop, where
+    //  substring is an out variable, where the subsring is stored.
+    //  Argument prevPos is to be declared outside the loop and initialized with value 0.
+    bool Split(std::string src, char delimiter, std::string& substring, size_t& prevPos);
 };

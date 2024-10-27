@@ -14,7 +14,7 @@ class JSON
 private:
 	// Due to several ways to intialize a JSON,
 	// contructor will be private and empty.
-	JSON() { }
+	JSON();
 
 public:
 	JSON& operator=(const JSON& rhs) = default;
@@ -22,7 +22,7 @@ public:
 
 public:
 	static JSON ReadFromFile(const std::string& filename);
-	static JSON ReadFromString(const std::string& source);
+	static JSON ReadFromString(std::string source);
 
 public:
 	enum class JSON_NODE_TYPE
@@ -37,7 +37,7 @@ public:
 	bool isLiteral(JSON_NODE_TYPE type) { return (int)type > 1; }
 
 	// Basic node object. Contains only type, cannot be instantiated.
-	virtual class JSONNode
+	class JSONNode
 	{
 		// It is expected that type of the node cannot be changed during runtime.
 		const JSON_NODE_TYPE type = JSON_NODE_TYPE::JSON_NODE_TYPE_INVALID;
@@ -78,7 +78,7 @@ public:
 
 private:
 	// Root of the JSON sytax tree, must be a JSON object.
-	JSONObject* globalSpace;
+	JSONObject* globalSpace = nullptr;
 };
 
 
