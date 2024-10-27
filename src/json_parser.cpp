@@ -6,39 +6,60 @@
 // Helper recursive function, assumes unprocessed strings
 JSON::JSONNode* resolve_json(std::string body);
 
-inline bool isStringLiteral(const std::string& str)
+JSONSource::Pos JSONSource::GetSymbolSourcePosition(size_t trimmedPos)
 {
-	if (!utilstr::BeginsAndEndsWith(str, '"'))
+	std::cout << "Symbol: " << trimmedStr.at(trimmedPos) << std::endl;
+
+	size_t sourceOffset = 0;	// Counts all symbols except newlines
+	size_t trimmedOffset = 0;	// Counts all symbols except whitespaces, tabs and newlines
+	size_t lineOffset = 0;		// Counts all symbols up to last newline, according to source
+	size_t line = 1;			// Number of whole lines
+
+	for (char& c : sourceStr)
 	{
-		std::string errorMsg =	"[ERROR] Object member identifier/string literal ";
-		errorMsg +=				"is not of string format. Member ignored.";
-		std::cerr << errorMsg << std::endl;
-		return false;
+		if (trimmedOffset == trimmedPos + 1) break;
+
+		sourceOffset++;
+
+		switch (c)
+		{
+		case ' ':
+		case '\t':
+			break;
+		case '\n':
+			line++;
+			lineOffset = sourceOffset;
+			break;
+		default:
+			trimmedOffset++;
+		}
+
 	}
-	return true;
+
+	Pos query;
+	query.line = line;
+	query.col = sourceOffset - lineOffset;
+
+	return query;
 }
 
-// Assumes string input.
-inline std::string getStringContents(std::string str)
+std::string JSONSource::Pos::ToString()
 {
-	// Output error message if input is not string
-	isStringLiteral(str);
-	return utilstr::TrimOneChar(str);
+	std::string str = "(";
+	str += std::to_string(line);
+	str += ";";
+	str += std::to_string(col);
+	str += ")";
+	return str;
 }
 
-inline std::string jsonTrim(std::string str)
+JSONSource::JSONSource(std::string filename)
 {
-	return utilstr::Trim(str, " \n\t");
-}
+	sourceStr = utilstr::ReadFromFile(filename);
 
-JSON::JSON()
-{
-	std::cout << "Created JSON!" << std::endl;
-}
-
-JSON::JSON(const JSON& other)
-{
-	std::cout << "Copied JSON!" << std::endl;
+	// Remove all spaces, tabs and newlines from the string
+	trimmedStr = sourceStr;
+	utilstr::ReplaceAllChars(trimmedStr, " \n\t", "");
 }
 
 JSON JSON::ReadFromFile(const std::string& filename)
@@ -48,7 +69,7 @@ JSON JSON::ReadFromFile(const std::string& filename)
 
 JSON JSON::ReadFromString(std::string source)
 {
-	source = jsonTrim(source);
+	
 
 	// Check for empty input
 	if (source.size() == 0)
@@ -81,68 +102,27 @@ JSON JSON::ReadFromString(std::string source)
 
 JSON::JSONNode* resolve_json(std::string body)
 {	
-	body = jsonTrim(body);
+	// Example JSON:
+	// {"menu":{"id":"file","value":"File"}}
 
 	// A JSON object
 	if (utilstr::BeginsAndEndsWith(body, '{', '}'))
 	{
 		JSON::JSONObject* object = new JSON::JSONObject;
 		body = utilstr::TrimOneChar(body);
-		std::cout << "Trimmed body:\n" << body << std::endl;
-
-		// Split body with commas to find individual class members
-		size_t prevPosComma = 0;
-		std::string member;
-		while (utilstr::Split(body, ',', member, prevPosComma))
+		// "menu":{"id":"file","value":"File"}
+		
+		// Iterate through "id": value pairs
+		while (true)
 		{
-			// PROBLEM: commas are also inside object body
-			std::cout << "Comma-separated value:\n" << member << std::endl;
+			size_t beginIdentifier, endIdentifier;
+			size_t beginBody, endBody;
 
-			// Substring format:
-			// "..": (..) - (..) can be any JSON node.
-			std::string memberIdentifier;
-			std::string memberBody;
-
-			// Split member source string with colon
-			size_t prevPosSemicolon = 0;
-			std::string substring;
-			int counter = 0;
-			while (utilstr::Split(member, ':', substring, prevPosSemicolon))
+			if (body.at(0) != '"')
 			{
-				substring = jsonTrim(substring);
-
-				// Member identifier
-				if (counter == 0)
-				{
-					// If string is invalid, ignore this member
-					if (!isStringLiteral(substring)) break;
-
-					memberIdentifier = getStringContents(substring);
-				}
-
-				// JSON node source
-				else if (counter == 1)
-				{
-					// No error checking, this is responsibility of subsequent resolve_json calls.
-
-					memberBody = substring;
-				}
-
-				// JSON Error - called if several colon characters were found
-				else break;
-
-				counter++;
+				std::string errorMsg = "[ERROR] '\"' expected at";
 			}
-
-			// If member was dropped, move to next member
-			if (memberIdentifier.empty() || memberBody.empty()) continue;
-
-			std::cout << "Entry: " << memberIdentifier << ": " << memberBody << std::endl;
-
-			// Otherwise, add member to a tree
-			JSON::JSONNode* childNodePtr = resolve_json(memberBody);	// Recursive call
-			std::pair<std::string, JSON::JSONNode*> memberEntry(memberIdentifier, childNodePtr);
-			object->members.insert(memberEntry);
+			
 		}
 
 		return object;

@@ -14,7 +14,10 @@
 namespace utilstr
 {
     //  Replaces all given substrings
-    std::string ReplaceAll(std::string& str, std::string from, std::string to);
+    std::string ReplaceAll(std::string& str, const std::string& from, const std::string& to);
+
+    //  Replace all chars in a sequence
+    std::string ReplaceAllChars(std::string& str, const std::string& charArrayFrom, const std::string& to);
 
     //  Utility function to return trimmed string.
     //  Changes the reference and returns the copy.

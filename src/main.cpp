@@ -9,9 +9,10 @@ int main()
     std::string jsonPath = "json\\";
     std::string filename = "test1.json";
     
-    JSON json = JSON::ReadFromFile(jsonPath + filename);
+    std::string path = jsonPath + filename;
 
-    
+    JSONSource src(path);
+    std::cout << "Pos: " << src.GetSymbolSourcePosition(12).ToString() << std::endl;
 
     return 0;
 }

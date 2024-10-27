@@ -14,11 +14,11 @@ class JSON
 private:
 	// Due to several ways to intialize a JSON,
 	// contructor will be private and empty.
-	JSON();
+	JSON() { }
 
 public:
 	JSON& operator=(const JSON& rhs) = default;
-	JSON(const JSON& other);
+	JSON(const JSON& other) { }
 
 public:
 	static JSON ReadFromFile(const std::string& filename);
@@ -82,3 +82,22 @@ private:
 };
 
 
+// Class for dealing with JSON syntax error highlighing
+class JSONSource
+{
+	std::string sourceStr;
+	std::string trimmedStr;
+
+public:
+	struct Pos
+	{
+		unsigned int line = 0;
+		unsigned int col = 0;
+
+		std::string ToString();
+	};
+
+	JSONSource(std::string filename);
+
+	Pos GetSymbolSourcePosition(size_t trimmedPos);
+};
