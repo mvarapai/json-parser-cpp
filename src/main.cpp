@@ -12,7 +12,12 @@ int main()
     std::string path = jsonPath + filename;
 
     JSONSource src(path);
-    std::cout << "Pos: " << src.GetSymbolSourcePosition(12).ToString() << std::endl;
+    JSONString str = src.GetString();
+    size_t trimmedPos = 300;
+    JSONSource::Pos pos = str.GetSourcePos(trimmedPos);
+    //std::string string = str.ScanString(pos);
+    std::cout << "Str: " << str << std::endl;
+    std::cout << "TrimmedPos: " << trimmedPos << "\nPos: " << pos.ToString() << std::endl;
 
     return 0;
 }

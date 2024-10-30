@@ -6,43 +6,75 @@
 // Helper recursive function, assumes unprocessed strings
 JSON::JSONNode* resolve_json(JSONString body);
 
-JSONSource::Pos JSONSource::GetSymbolSourcePosition(size_t trimmedPos)
-{
-    std::cout << "Symbol: " << trimmedStr.at(trimmedPos) << std::endl;
+JSONString JSONSource::GetString() { return JSONString(trimmedStr, this); }
 
-    size_t sourceOffset = 0;	// Counts all symbols except newlines
-    size_t trimmedOffset = 0;	// Counts all symbols except whitespaces, tabs and newlines
+// Loop invariant: check whether the symbol should be retained.
+// Arguments:
+//  c : current character
+//  escape : true if previous character was '\'
+//  inString : true if character c is contained in string literal
+// Supposed to be invoked from a while loop, with initial bool values set to false.
+bool CleanTest(const char c, bool& escape, bool& inString)
+{
+    // If '"' is in no escape sequence, it is either opening or closing quote.
+    if (c == '"' && !escape) inString = !inString;
+
+    // If escape is false, backslash will expect some other character.
+    // If true, the escape character is simply written.
+    if (c == '\\') escape = !escape;
+    else if (escape) escape = false;
+
+    // Choose whether to drop the character
+
+    // Tabs and newlines are removed either way
+    if (c == '\t' || c == '\n') return false;
+
+    // Remove whitespaces only outside strings
+    if (c == ' ' && !inString) return false;
+
+    return true;
+}
+
+// Function to transform initial raw character position from trimmed string,
+// to the line and col position in original string, understandable to the developer.
+// If trimmedOffset is larger than the length of the string, position of last character
+// in trimmed string is returned.
+JSONSource::Pos JSONSource::GetSymbolSourcePosition(size_t trimmedOffset)
+{
+    size_t sourcePos = 0;
+    size_t trimmedPos = 0;	// Counts all symbols except whitespaces, tabs and newlines
     size_t lineOffset = 0;		// Counts all symbols up to last newline, according to source
     size_t line = 1;			// Number of whole lines
 
-    for (char& c : sourceStr)
+    bool escape = false;
+    bool inString = false;
+
+    for (sourcePos = 0; sourcePos < sourceStr.size(); sourcePos++)
     {
-        if (trimmedOffset == trimmedPos + 1) break;
+        char c = sourceStr.at(sourcePos);
 
-        sourceOffset++;
-
-        switch (c)
+        if (c == '\n')
         {
-        case ' ':
-        case '\t':
-            break;
-        case '\n':
             line++;
-            lineOffset = sourceOffset;
-            break;
-        default:
-            trimmedOffset++;
+            lineOffset = sourcePos + 1;
         }
 
+        if (CleanTest(c, escape, inString)) trimmedPos++;
+        if (trimmedPos == trimmedOffset + 1) break;
+
+        // If the end of trimmed string reached
+        if (trimmedPos == trimmedStr.size()) break;
     }
 
     Pos query;
     query.line = line;
-    query.col = sourceOffset - lineOffset;
+    query.col = sourcePos - lineOffset + 1;
 
     return query;
 }
 
+// Translate Pos object to string
+// with format (line:col)
 std::string JSONSource::Pos::ToString()
 {
     std::string str = "(";
@@ -53,14 +85,29 @@ std::string JSONSource::Pos::ToString()
     return str;
 }
 
-JSONSource::JSONSource(std::string filename) : filename(filename)
+//  Helper function to remove all characters that do not
+//  contibute to JSON syntax, namely:
+//      1. Tabs
+//      2. Newlines
+//      3. Whitespaces (except for string literals)
+std::string CleanJSON(std::string source)
 {
-    sourceStr = utilstr::ReadFromFile(filename);
+    std::string result;
 
-    // Remove all spaces, tabs and newlines from the string
-    trimmedStr = sourceStr;
-    utilstr::ReplaceAllChars(trimmedStr, " \n\t", "");
+    bool escape = false;    // Check whether previous symbol was '\'.
+    bool inString = false;  // Check if currently processed symbol is part of a string literal.
+
+    for (char& c : source)
+    {
+        if (CleanTest(c, escape, inString)) result += c;
+    }
+    return result;
 }
+
+JSONSource::JSONSource(std::string filename) 
+    : filename(filename), 
+    sourceStr(utilstr::ReadFromFile(filename)), 
+    trimmedStr(CleanJSON(sourceStr)) { }
 
 JSON::JSON(const std::string& filename)
 {
@@ -93,7 +140,7 @@ JSON::JSON(const std::string& filename)
     globalSpace = static_cast<JSONObject*>(resolve_json(source));
 }
 
-void JSONString::PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0)
+void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)
 {
     // [ERROR] test1.json:2 - "X expected."
     std::string msg;
@@ -163,6 +210,9 @@ std::string JSONString::ScanString(size_t& _Pos)
             case 't':
                 str += '\t';
                 break;
+            case '\"':
+                str += '\"';
+                break;
             default:
                 PrintSyntaxMsg("Valid escape sequence expected.", SYNTAX_MSG_TYPE_WARNING, counter);
             }
@@ -194,6 +244,33 @@ std::string JSONString::ScanString(size_t& _Pos)
     }
     _Pos = counter;
     return str;
+}
+
+// TODO
+JSONString JSONString::ScanSyntax(size_t& _Pos)
+{
+    char open = at(0);
+    if (open != '{' && open != '[')
+    {
+        PrintSyntaxMsg("'{' or '[' expected.");
+        return *this;
+    }
+
+    char close;
+    if (open == '{') close = '}';
+    if (open == '[') close = ']';
+
+    size_t level = 0;
+    size_t counter = 0;
+    for (char& c : *this)
+    {
+        counter++;
+
+        if (counter == 1) continue;
+
+        if (c == close && level == 0) break;
+    }
+    return { "",0 };
 }
 
 JSON::JSONNode* resolve_json(JSONString body)

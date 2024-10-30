@@ -9,12 +9,78 @@
 #include <string>
 #include <unordered_map>
 
-class JSONSource;
-class JSONString;
-
 #define SYNTAX_MSG_TYPE_ERROR 0
 #define SYNTAX_MSG_TYPE_WARNING 1
 #define SYNTAX_MSG_TYPE_MESSAGE 2
+
+class JSONString;
+// Class for dealing with JSON syntax error highlighing
+class JSONSource
+{
+    const std::string sourceStr;	// String as in initial JSON file
+    const std::string trimmedStr;	// String without whilespaces (outside strings), newlines and tabs
+
+    const std::string filename;
+
+public:
+    // Struct to represent position of a character
+    struct Pos
+    {
+        unsigned int line = 0;
+        unsigned int col = 0;
+
+        std::string ToString();
+    };
+
+    JSONSource(std::string filename);				// Read and trim source file
+    Pos GetSymbolSourcePosition(size_t trimmedPos);	// Iterate the file to find position
+
+    // Return an initial JSONString, with whole trimmed string and offset of zero
+    JSONString GetString();
+    std::string GetFilename() { return filename; }
+};
+
+
+
+// Augmented string type to support finding source position
+class JSONString : public std::string
+{
+    size_t offset;		// Offset from beginning of the source string
+    JSONSource* source;	// Class has no ownership of that pointer,
+                        // thus the default copy constructor will do fine.
+
+    // Instance of JSONString can only be created via:
+    //	1) JSONSource::GetString()	- Initial string with offset 0
+    //	2) JSONString::substr(..)	- All subsequent substrings
+    //
+    // It is a point of design that JSON strings are to be created only via substrings.
+    // It ensures that any JSON string is an actual fragment of trimmed source JSON file.
+    friend class JSONSource;
+    JSONString(std::string str, JSONSource* source, size_t offset = 0)
+        : std::string(str), source(source), offset(offset) { }
+public:
+
+    // Override substring method to increase offset
+    const JSONString substr(size_t _Off, size_t _Count)
+    {
+        return JSONString(std::string::substr(_Off, _Count), source, offset += _Off);
+    }
+
+    // Access source position easily without having to care 
+    JSONSource::Pos GetSourcePos(size_t _Off = 0)
+    {
+        return source->GetSymbolSourcePosition(offset + _Off);
+    }
+
+    // By creation, instance of JSONString cannot contain nullptr JSONSource pointer.
+    JSONSource* GetSource() { return source; }
+
+    void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0);
+
+    // Scan string at the beginning, bounded by \".
+    std::string ScanString(size_t& _Pos);
+    JSONString ScanSyntax(size_t& _Pos);
+};
 
 // Class to represent JSON syntax tree.
 class JSON
@@ -72,7 +138,7 @@ public:
         T value;
 
     public:
-        JSONLiteral(T literalValue, JSON_NODE_TYPE literalType) : 
+        JSONLiteral(T literalValue, JSON_NODE_TYPE literalType) :
             value(literalValue), JSONNode(literalType) { }
 
         T GetValue() { return value; }
@@ -93,73 +159,6 @@ private:
     ~JSON()
     {
         // TODO: Tree deallocation
-        delete jsonSource;
+        //delete jsonSource;
     }
-};
-
-
-// Class for dealing with JSON syntax error highlighing
-class JSONSource
-{
-    std::string sourceStr;	// String as in initial JSON file
-    std::string trimmedStr;	// String without whilespaces, newlines and tabs
-
-    const std::string filename;
-
-public:
-    // Struct to represent position of a character
-    struct Pos
-    {
-        unsigned int line = 0;
-        unsigned int col = 0;
-
-        std::string ToString();
-    };
-
-    JSONSource(std::string filename);				// Read and trim source file
-    Pos GetSymbolSourcePosition(size_t trimmedPos);	// Iterate the file to find position
-
-    // Return an initial JSONString, with whole trimmed string and offset of zero
-    const JSONString GetString() { return const JSONString(trimmedStr, this); }
-    std::string GetFilename() { return filename; }
-};
-
-// Augmented string type to support finding source position
-class JSONString : public std::string
-{
-    size_t offset;		// Offset from beginning of the source string
-    JSONSource* source;	// Class has no ownership of that pointer.
-                        // Thus the default constructor will do fine
-
-    // Instance of JSONString can only be created via:
-    //	1) JSONSource::GetString()	- Initial string with offset 0
-    //	2) JSONString::substr(..)	- All subsequent substrings
-    //
-    // It is a point of design that JSON strings are to be created only via substrings.
-    // It ensures that any JSON string is an actual fragment of trimmed source JSON file.
-    friend class JSONSource;
-    JSONString(std::string str, JSONSource* source, size_t offset = 0)
-        : std::string(str), source(source), offset(offset) { }
-public:
-
-    // Override substring method to increase offset
-    const JSONString substr(size_t _Off, size_t _Count)
-    {
-        return const JSONString(std::string::substr(_Off, _Count), source, offset += _Off);
-    }
-
-    // Access source position easily without having to care 
-    JSONSource::Pos GetSourcePos(size_t _Off = 0)
-    {
-        source->GetSymbolSourcePosition(offset + _Off);
-    }
-
-    // By creation, instance of JSONString cannot contain nullptr JSONSource pointer.
-    JSONSource* GetSource() { return source; }
-
-    void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0);
-
-    // Scan string at the beginning, bounded by \".
-    std::string ScanString(size_t& _Pos);
-    JSONString ScanSyntax(size_t& _Pos);
 };
