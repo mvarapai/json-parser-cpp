@@ -66,10 +66,7 @@ JSONSource::Pos JSONSource::GetSymbolSourcePosition(size_t trimmedOffset)
         if (trimmedPos == trimmedStr.size()) break;
     }
 
-    Pos query;
-    query.line = line;
-    query.col = sourcePos - lineOffset + 1;
-
+    Pos query(line, sourcePos - lineOffset + 1);
     return query;
 }
 
@@ -140,7 +137,7 @@ JSON::JSON(const std::string& filename)
     globalSpace = static_cast<JSONObject*>(resolve_json(source));
 }
 
-void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)
+void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)const
 {
     // [ERROR] test1.json:2 - "X expected."
     std::string msg;
@@ -348,4 +345,9 @@ JSON::JSONNode* resolve_json(JSONString body)
     }
 
     return new JSON::JSONObject();
+}
+
+int add(int a, int b)
+{
+    return a + b;
 }

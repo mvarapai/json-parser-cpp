@@ -33,10 +33,17 @@ public:
     // Struct to represent position of a character
     struct Pos
     {
-        unsigned int line = 0;
-        unsigned int col = 0;
+        size_t line = 0;
+        size_t col = 0;
 
         std::string ToString();
+
+        Pos(size_t line, size_t col) : line(line), col(col) { }
+
+        bool operator==(const Pos& other) const
+        {
+            return (line == other.line && col == other.col);
+        }
     };
 
     JSONSource(std::string filename);				// Read and trim source file
@@ -64,6 +71,7 @@ public:
 //  2. data + size MUST be inside JSONSource string
 class JSONString
 {
+private:
     size_t size;        // Size of the char sequence
     const char* data;   // C-style string (no ownership);
                         // WARNING: not null-terminated
@@ -104,7 +112,7 @@ public:
     }
 
     // Access source position easily without having to care 
-    JSONSource::Pos GetSourcePos(size_t _Off = 0)
+    JSONSource::Pos GetSourcePos(size_t _Off = 0) const
     {
         // If character position is outside the string, use the last char
         if (_Off >= size) _Off = size - 1;
@@ -114,22 +122,22 @@ public:
     }
 
     // By creation, instance of JSONString cannot contain nullptr JSONSource pointer.
-    JSONSource* GetSource() { return source; }
+    JSONSource* GetSource() const { return source; }
 
-    size_t Size() { return size; }
+    size_t Size() const { return size; }
 
-    const char at(size_t index)
+    const char at(size_t index) const
     {
         if (index >= size) index = size - 1;
         return data[index];
     }
 
-    std::string ToString() 
+    std::string ToString() const
     {
         return std::string(data, size);
     }
 
-    void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0);
+    void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0) const;
 
     // Scan string at the beginning, bounded by \".
     std::string ScanString(size_t& _Pos);
@@ -216,3 +224,5 @@ private:
         //delete jsonSource;
     }
 };
+
+int add(int a, int b);

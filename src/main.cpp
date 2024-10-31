@@ -14,7 +14,8 @@ int main()
     JSONSource src(path);
     JSONString str = src.GetString();
 
-    str = str.substr(2, 7);
+    str = str.substr(5, 10);
+    str.PrintSyntaxMsg("Some error.", 0, 5);
 
     std::cout << "Str: " << str.ToString() << std::endl;
 
