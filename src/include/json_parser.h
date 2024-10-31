@@ -93,9 +93,6 @@ public:
     // Create a new JSONString object using string chunk
     const JSONString substr(size_t _Off, size_t _Count)
     {
-        const char* pData = data;
-        pData += _Off;
-
         // Specification check for the object
         if (_Off + _Count >= size)
         {
@@ -132,6 +129,11 @@ public:
         return data[index];
     }
 
+    const char front() const
+    {
+        return at(0);
+    }
+
     std::string ToString() const
     {
         return std::string(data, size);
@@ -141,7 +143,7 @@ public:
 
     // Scan string at the beginning, bounded by \".
     std::string ScanString(size_t& _Pos);
-    JSONString ScanSyntax(size_t& _Pos);
+    JSONString ScanListObjectBody(size_t& _Pos);
 };
 
 // Class to represent JSON syntax tree.

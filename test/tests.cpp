@@ -26,6 +26,12 @@ TEST_CASE("Basic substring functionality", "[JSONString]")
 	REQUIRE(!string.substr(0, 7).ToString().compare("{\"menu\""));
 	REQUIRE(!string.substr(1, 6).ToString().compare("\"menu\""));
 	REQUIRE(!string.substr(2, 4).ToString().compare("menu"));
+
+	// Check the escape sequences and whitespaces. For now they are simple text.
+	REQUIRE(!string.substr(15, 43).ToString().compare("some text and escape sequences \\\\\\n\\\"\\t}{]["));
+
+	// Whitespaces must be preserved only whithin string literals. Outside they are trimmed.
+	REQUIRE(!string.substr(1, 8).ToString().compare("\"menu\":{"));
 }
 
 TEST_CASE("Handle out of bounds input", "[JSONString]")
@@ -38,4 +44,30 @@ TEST_CASE("Handle out of bounds input", "[JSONString]")
 
 	// Should give a string from 100 up to its end
 	REQUIRE(!string.substr(100, 1000).ToString().compare(string.substr(100, string.Size() - 100).ToString()));
+
+	// Should give the same string
+	REQUIRE(!string.substr(1000, 1000).ToString().compare(string.ToString()));
+}
+
+TEST_CASE("Scanning string literals", "[JSONString]")
+{
+	JSONSource source("test1.json");
+	JSONString string = source.GetString();
+
+	JSONString text = string.substr(14, 50);
+	size_t pos = 0;
+	REQUIRE(!text.ScanString(pos).compare("some text and escape sequences \\\n\"\t}{]["));
+	REQUIRE(pos == 45);
+}
+
+TEST_CASE("Scanning objects and lists", "[JSONString]")
+{
+	JSONSource source("test1.json");
+	JSONString string = source.GetString();
+
+	size_t pos = 0;
+	JSONString body = string.substr(96, 1000);
+	body = body.ScanListObjectBody(pos);
+	REQUIRE(!body.ToString().compare("{\"value\":\"New\",\"onclick\":\"CreateNewDoc()\"}"));
+	REQUIRE(pos == 42);
 }

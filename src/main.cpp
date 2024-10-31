@@ -14,10 +14,13 @@ int main()
     JSONSource src(path);
     JSONString str = src.GetString();
 
-    str = str.substr(5, 10);
-    str.PrintSyntaxMsg("Some error.", 0, 5);
+    str = str.substr(96, 1000);
+
+    size_t pos = 0;
 
     std::cout << "Str: " << str.ToString() << std::endl;
+    std::cout << str.ScanListObjectBody(pos).ToString() << std::endl;
+    std::cout << "Pos: " << pos << std::endl;
 
     return 0;
 }

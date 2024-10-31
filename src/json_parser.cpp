@@ -8,13 +8,7 @@ JSON::JSONNode* resolve_json(JSONString body);
 
 JSONString JSONSource::GetString() { return JSONString(this, trimmedStr.data(), trimmedStr.size()); }
 
-// Loop invariant: check whether the symbol should be retained.
-// Arguments:
-//  c : current character
-//  escape : true if previous character was '\'
-//  inString : true if character c is contained in string literal
-// Supposed to be invoked from a while loop, with initial bool values set to false.
-bool CleanTest(const char c, bool& escape, bool& inString)
+void isInString(const char c, bool& escape, bool& inString)
 {
     // If '"' is in no escape sequence, it is either opening or closing quote.
     if (c == '"' && !escape) inString = !inString;
@@ -23,6 +17,17 @@ bool CleanTest(const char c, bool& escape, bool& inString)
     // If true, the escape character is simply written.
     if (c == '\\') escape = !escape;
     else if (escape) escape = false;
+}
+
+// Loop invariant: check whether the symbol should be retained.
+// Arguments:
+//  c : current character
+//  escape : true if previous character was '\'
+//  inString : true if character c is contained in string literal
+// Supposed to be invoked from a while loop, with initial bool values set to false.
+bool CleanTest(const char c, bool& escape, bool& inString)
+{
+    isInString(c, escape, inString);
 
     // Choose whether to drop the character
 
@@ -145,13 +150,13 @@ void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)
     switch (msgType)
     {
     case 0:
-        msg = "[ERROR]";
+        msg = "\n[ERROR]";
         break;
     case 1:
-        msg = "[WARNING]";
+        msg = "\n[WARNING]";
         break;
     default:
-        msg = "[MESSAGE]";
+        msg = "\n[MESSAGE]";
     }
 
     msg += " ";
@@ -162,7 +167,16 @@ void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)
     msg += errorText;
 
     std::cerr << msg << std::endl;
+
+    // Going on with a syntax error is impossible.
+    if (msgType == SYNTAX_MSG_TYPE_ERROR) 
+    {
+        std::cerr << "Interpretation failed." << std::endl;
+        exit(0);
+    }
 }
+
+
 
 // Input: " \"TEXT\".. "
 // Output: TEXT, with
@@ -186,10 +200,8 @@ std::string JSONString::ScanString(size_t& _Pos)
     std::string str;
 
     size_t counter = 0;
-    for (counter = 0; counter < size; counter++)
+    for (counter = 1; counter < size; counter++)
     {
-        if (counter == 1) continue;
-
         char c = at(counter);
 
         // If this character follows \, it is an escape sequence
@@ -239,34 +251,51 @@ std::string JSONString::ScanString(size_t& _Pos)
         PrintSyntaxMsg("'\"' expected.", SYNTAX_MSG_TYPE_ERROR, counter - 1);
         return "";
     }
-    _Pos = counter;
+    _Pos = counter + 1;
     return str;
 }
 
-// TODO
-JSONString JSONString::ScanSyntax(size_t& _Pos)
+JSONString JSONString::ScanListObjectBody(size_t& _Pos)
 {
-    char open = at(0);
-    if (open != '{' && open != '[')
+    char closing;
+    if (front() == '{') closing = '}';
+    else if (front() == '[') closing = ']';
+    else 
     {
-        PrintSyntaxMsg("'{' or '[' expected.");
+        PrintSyntaxMsg("Expected an object or a list.");
         return *this;
     }
 
-    char close;
-    if (open == '{') close = '}';
-    if (open == '[') close = ']';
-
-    size_t level = 0;
-    size_t counter = 0;
-    for (counter = 0; counter < size; counter++)
+    bool escape = false;
+    bool inString = false;
+    size_t depth = 0;
+    size_t i;
+    for (i = 0; i < size; i++)
     {
-        char c = at(counter);
+        const char c = at(i);
+        isInString(c, escape, inString);
+        
+        if (!inString)
+        {
+            if (c == '{' || c == '[') depth++;
+            if (c == '}' || c == ']') depth--;
+        }
 
-        if (counter == 1) continue;
+        // If all parentheses are closed
+        if (depth == 0)
+        {
+            // Check if the closing parentheses correspond
+            if (c != closing)
+            {
+                PrintSyntaxMsg("Parentheses mismatch.", SYNTAX_MSG_TYPE_ERROR, i);
+                return *this;
+            }
 
-        if (c == close && level == 0) break;
+            _Pos = i + 1;
+            return substr(0, _Pos);
+        }
     }
+    PrintSyntaxMsg("No closing parentheses found.", SYNTAX_MSG_TYPE_ERROR, size - 1);
     return *this;
 }
 
