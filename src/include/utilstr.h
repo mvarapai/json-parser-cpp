@@ -11,6 +11,8 @@
 
 #include <string>
 
+class JSONString;
+
 namespace utilstr
 {
     //  Replaces all given substrings
@@ -39,6 +41,9 @@ namespace utilstr
     //  If string contains less than two characters, returns false.
     bool BeginsAndEndsWith(const std::string& str, const char begins, const char ends);
     bool BeginsAndEndsWith(const std::string& str, const char c);
+
+    bool BeginsAndEndsWith(JSONString str, const char begins, const char ends);
+    bool BeginsAndEndsWith(JSONString str, const char c);
 
     //  Trims any character from the beginning and the end of the string.
     //  If length < 2, returns empty string.

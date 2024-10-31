@@ -13,11 +13,10 @@ int main()
 
     JSONSource src(path);
     JSONString str = src.GetString();
-    size_t trimmedPos = 300;
-    JSONSource::Pos pos = str.GetSourcePos(trimmedPos);
-    //std::string string = str.ScanString(pos);
-    std::cout << "Str: " << str << std::endl;
-    std::cout << "TrimmedPos: " << trimmedPos << "\nPos: " << pos.ToString() << std::endl;
+
+    str = str.substr(2, 7);
+
+    std::cout << "Str: " << str.ToString() << std::endl;
 
     return 0;
 }

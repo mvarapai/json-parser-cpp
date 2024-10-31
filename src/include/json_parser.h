@@ -13,14 +13,21 @@
 #define SYNTAX_MSG_TYPE_WARNING 1
 #define SYNTAX_MSG_TYPE_MESSAGE 2
 
+// Forward declaration to use in JSONSource
 class JSONString;
+
+
 // Class for dealing with JSON syntax error highlighing
 class JSONSource
 {
-    const std::string sourceStr;	// String as in initial JSON file
-    const std::string trimmedStr;	// String without whilespaces (outside strings), newlines and tabs
-
     const std::string filename;
+
+    const std::string sourceStr;	// String as in initial JSON file
+    const std::string trimmedStr;	// String without whilespaces (outside strings), newlines and tabs.
+                                    // This is the string we will work with from now on.
+
+    friend class JSONString;
+    const char* data() { return trimmedStr.data(); }
 
 public:
     // Struct to represent position of a character
@@ -35,17 +42,32 @@ public:
     JSONSource(std::string filename);				// Read and trim source file
     Pos GetSymbolSourcePosition(size_t trimmedPos);	// Iterate the file to find position
 
-    // Return an initial JSONString, with whole trimmed string and offset of zero
+    // Return an initial JSONString, with offset of zero and whole size.
+    // This is supposed to be the only way to get JSONString not from another instance.
     JSONString GetString();
+
     std::string GetFilename() { return filename; }
 };
 
 
 
-// Augmented string type to support finding source position
-class JSONString : public std::string
+// An interface to access JSON string.
+//
+// The rationale behind using C-strings is that all types of JSONString are interfaces to
+// substrings from the same JSONSource, which stores std::string with all data. Thus,
+// we can avoid having to copy the same char sequence, which would otherwise be wasteful.
+// Performance gain from using such interface is especially noticeable since each recursive call
+// to process JSON would need a string to work on, which would otherwise be copied each time.
+//
+// Specification:
+//  1. data MUST be inside JSONSource string
+//  2. data + size MUST be inside JSONSource string
+class JSONString
 {
-    size_t offset;		// Offset from beginning of the source string
+    size_t size;        // Size of the char sequence
+    const char* data;   // C-style string (no ownership);
+                        // WARNING: not null-terminated
+
     JSONSource* source;	// Class has no ownership of that pointer,
                         // thus the default copy constructor will do fine.
 
@@ -56,24 +78,56 @@ class JSONString : public std::string
     // It is a point of design that JSON strings are to be created only via substrings.
     // It ensures that any JSON string is an actual fragment of trimmed source JSON file.
     friend class JSONSource;
-    JSONString(std::string str, JSONSource* source, size_t offset = 0)
-        : std::string(str), source(source), offset(offset) { }
+    JSONString(JSONSource* pSource, const char* pData, size_t size)
+        : source(pSource), data(pData), size(size) { }
 public:
 
-    // Override substring method to increase offset
+    // Create a new JSONString object using string chunk
     const JSONString substr(size_t _Off, size_t _Count)
     {
-        return JSONString(std::string::substr(_Off, _Count), source, offset += _Off);
+        const char* pData = data;
+        pData += _Off;
+
+        // Specification check for the object
+        if (_Off + _Count >= size)
+        {
+            // If completely outside boundaries, copy this string.
+            if (_Off >= size)
+            {
+                return *this;
+            }
+            // Otherwise, trim it at the end
+            return JSONString(source, data + _Off, size - _Off);
+        }
+
+        return JSONString(source, data + _Off, _Count);
     }
 
     // Access source position easily without having to care 
     JSONSource::Pos GetSourcePos(size_t _Off = 0)
     {
-        return source->GetSymbolSourcePosition(offset + _Off);
+        // If character position is outside the string, use the last char
+        if (_Off >= size) _Off = size - 1;
+
+        size_t offsetFromSource = data - source->data();
+        return source->GetSymbolSourcePosition(offsetFromSource + _Off);
     }
 
     // By creation, instance of JSONString cannot contain nullptr JSONSource pointer.
     JSONSource* GetSource() { return source; }
+
+    size_t Size() { return size; }
+
+    const char at(size_t index)
+    {
+        if (index >= size) index = size - 1;
+        return data[index];
+    }
+
+    std::string ToString() 
+    {
+        return std::string(data, size);
+    }
 
     void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0);
 

@@ -6,7 +6,7 @@
 // Helper recursive function, assumes unprocessed strings
 JSON::JSONNode* resolve_json(JSONString body);
 
-JSONString JSONSource::GetString() { return JSONString(trimmedStr, this); }
+JSONString JSONSource::GetString() { return JSONString(this, trimmedStr.data(), trimmedStr.size()); }
 
 // Loop invariant: check whether the symbol should be retained.
 // Arguments:
@@ -115,7 +115,7 @@ JSON::JSON(const std::string& filename)
     JSONString source = jsonSource->GetString();
 
     // Check for empty input
-    if (source.size() == 0)
+    if (source.Size() == 0)
     {
         std::string errorMsg =  "JSON file does not exist or is empty. ";
         errorMsg +=             "An empty JSON instance is created.";
@@ -189,11 +189,11 @@ std::string JSONString::ScanString(size_t& _Pos)
     std::string str;
 
     size_t counter = 0;
-    for (char& c : *this)
+    for (counter = 0; counter < size; counter++)
     {
-        counter++;
-
         if (counter == 1) continue;
+
+        char c = at(counter);
 
         // If this character follows \, it is an escape sequence
         if (escape)
@@ -262,15 +262,15 @@ JSONString JSONString::ScanSyntax(size_t& _Pos)
 
     size_t level = 0;
     size_t counter = 0;
-    for (char& c : *this)
+    for (counter = 0; counter < size; counter++)
     {
-        counter++;
+        char c = at(counter);
 
         if (counter == 1) continue;
 
         if (c == close && level == 0) break;
     }
-    return { "",0 };
+    return *this;
 }
 
 JSON::JSONNode* resolve_json(JSONString body)
@@ -283,7 +283,7 @@ JSON::JSONNode* resolve_json(JSONString body)
     {
         // Create new JSON object and expose its members
         JSON::JSONObject* object = new JSON::JSONObject;
-        body = body.substr(1, body.size() - 2);
+        body = body.substr(1, body.Size() - 2);
 
         // "menu":{"id":"file","value":"File"}
         
@@ -301,8 +301,9 @@ JSON::JSONNode* resolve_json(JSONString body)
             size_t counter = 0;
             bool escape = false;
             std::string id;
-            for (char& c : body)
+            for (counter = 0; counter < body.Size(); counter++)
             {
+                char c = body.at(counter);
                 if (counter == 0)
                 {
                     counter++;
@@ -334,11 +335,11 @@ JSON::JSONNode* resolve_json(JSONString body)
     }
 
     // A string literal
-    else if (utilstr::BeginsAndEndsWith(body, '"'))
+    /*else if (utilstr::BeginsAndEndsWith(body, '"'))
     {
         return new JSON::JSONLiteral<std::string>(utilstr::TrimOneChar(body),
             JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING);
-    }
+    }*/
 
     // Numeric literal or invalid
     else

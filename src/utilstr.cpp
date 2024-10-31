@@ -4,6 +4,7 @@
 //
 //  (c) Mikalai Varapai, 2024
 
+#include "json_parser.h"
 #include "utilstr.h"
 
 #include <fstream>
@@ -91,6 +92,17 @@ bool utilstr::BeginsAndEndsWith(const std::string& str, const char begins, const
 }
 
 bool utilstr::BeginsAndEndsWith(const std::string& str, const char c)
+{
+    return BeginsAndEndsWith(str, c, c);
+}
+
+bool utilstr::BeginsAndEndsWith(JSONString str, const char begins, const char ends)
+{
+    if (str.Size() < 2) return false;
+    return (str.at(0) == begins && str.at(str.Size() - 1));
+}
+
+bool utilstr::BeginsAndEndsWith(JSONString str, const char c)
 {
     return BeginsAndEndsWith(str, c, c);
 }
