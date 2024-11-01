@@ -8,6 +8,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <iostream>
 
 #define SYNTAX_MSG_TYPE_ERROR 0
 #define SYNTAX_MSG_TYPE_WARNING 1
@@ -108,11 +109,21 @@ public:
         return JSONString(source, data + _Off, _Count);
     }
 
+    // Substring from _Off till the end
+    const JSONString substr(size_t _Off)
+    {
+        if (_Off > size)
+        {
+            return *this;
+        }
+        return JSONString(source, data + _Off, size - _Off);
+    }
+
     // Access source position easily without having to care 
     JSONSource::Pos GetSourcePos(size_t _Off = 0) const
     {
         // If character position is outside the string, use the last char
-        if (_Off >= size) _Off = size - 1;
+        if (_Off > size) _Off = size - 1;
 
         size_t offsetFromSource = data - source->data();
         return source->GetSymbolSourcePosition(offsetFromSource + _Off);
@@ -141,19 +152,21 @@ public:
 
     void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0) const;
 
-    // Scan string at the beginning, bounded by \".
+    // Scan string at the beginning, bounded by '"'.
     std::string ScanString(size_t& _Pos);
+
+    // Scan {..} or [..]
     JSONString ScanListObjectBody(size_t& _Pos);
+
+    JSONString ScanLiteral(size_t& _Pos);
 };
 
 // Class to represent JSON syntax tree.
 class JSON
 {
-private:
+public:
     // Create JSON from file
     JSON(const std::string& filename);
-
-public:
     // Default copy and assignment
     JSON& operator=(const JSON& rhs) = delete;
     JSON(const JSON& other) = delete;
@@ -183,15 +196,21 @@ public:
     // JSON object - contains a list of identifiers and links further down the tree.
     struct JSONObject : JSONNode
     {
-        JSONObject() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT) { }
+        JSONObject() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT) 
+        {
+            std::cout << "Created object!" << std::endl;
+        }
         std::unordered_map<std::string, JSONNode*> members;
     };
 
     //	List - special structure in the tree, works parallel to JSONObject.
     struct JSONList : public JSONNode
     {
-        JSONList() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LIST) { }
-        std::vector<JSONObject*> elements;
+        JSONList() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LIST) 
+        {
+            std::cout << "Created list!" << std::endl;
+        }
+        std::vector<JSONNode*> elements;
     };
 
     // JSON literal - leaf of the tree.
@@ -203,13 +222,21 @@ public:
 
     public:
         JSONLiteral(T literalValue, JSON_NODE_TYPE literalType) :
-            value(literalValue), JSONNode(literalType) { }
+            value(literalValue), JSONNode(literalType) 
+        {
+            std::cout << "Created literal with value: " << literalValue << std::endl;
+        }
 
         T GetValue() { return value; }
         JSON_NODE_TYPE GetType() { return type; }
     };
 
 
+    ~JSON()
+    {
+        // TODO: Tree deallocation
+        //delete jsonSource;
+    }
 private:
     // Root of the JSON sytax tree, must be a JSON object.
     JSONObject* globalSpace = nullptr;
@@ -220,11 +247,4 @@ private:
         // Go down the syntax tree and call Release on these nodes
     }
 
-    ~JSON()
-    {
-        // TODO: Tree deallocation
-        //delete jsonSource;
-    }
 };
-
-int add(int a, int b);

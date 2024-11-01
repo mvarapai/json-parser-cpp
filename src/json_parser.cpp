@@ -111,37 +111,6 @@ JSONSource::JSONSource(std::string filename)
     sourceStr(utilstr::ReadFromFile(filename)), 
     trimmedStr(CleanJSON(sourceStr)) { }
 
-JSON::JSON(const std::string& filename)
-{
-    jsonSource = new JSONSource(filename);
-    JSONString source = jsonSource->GetString();
-
-    // Check for empty input
-    if (source.Size() == 0)
-    {
-        std::string errorMsg =  "JSON file does not exist or is empty. ";
-        errorMsg +=             "An empty JSON instance is created.";
-        source.PrintSyntaxMsg(errorMsg, SYNTAX_MSG_TYPE_WARNING);
-
-        return;
-    }
-    
-    // Check first important condition - global space must be an object.
-    if (!utilstr::BeginsAndEndsWith(source, '{', '}'))
-    {
-        std::string errorMsg =  "JSON file does not contain an object. ";
-        errorMsg +=             "Correct format of the file would be: \"{..}\". ";
-        errorMsg +=             "Empty JSON object returned.";
-        source.PrintSyntaxMsg(errorMsg);
-
-        return;
-    }
-
-    // Here, by the condition above, we are certain that the global space
-    // is in fact a JSON object.
-    globalSpace = static_cast<JSONObject*>(resolve_json(source));
-}
-
 void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)const
 {
     // [ERROR] test1.json:2 - "X expected."
@@ -228,6 +197,7 @@ std::string JSONString::ScanString(size_t& _Pos)
             continue;
         }
         
+        // Read next character as an escape sequence
         if (c == '\\')
         {
             escape = true;
@@ -251,6 +221,7 @@ std::string JSONString::ScanString(size_t& _Pos)
         PrintSyntaxMsg("'\"' expected.", SYNTAX_MSG_TYPE_ERROR, counter - 1);
         return "";
     }
+
     _Pos = counter + 1;
     return str;
 }
@@ -299,11 +270,63 @@ JSONString JSONString::ScanListObjectBody(size_t& _Pos)
     return *this;
 }
 
+JSONString JSONString::ScanLiteral(size_t& _Pos)
+{
+    bool escape = false;
+    bool inString = false;
+
+    // Scan till the first comma outside a string
+    size_t i;
+    for (i = 0; i < size; i++)
+    {
+        const char c = at(i);
+        isInString(i, escape, inString);
+
+        if (c == ',' && !inString)
+        {
+            _Pos = i;
+            return substr(0, i);
+        }
+    }
+
+    // i == size
+    _Pos = i;
+    return substr(0, i);
+}
+
+JSON::JSON(const std::string& filename)
+{
+    jsonSource = new JSONSource(filename);
+    JSONString source = jsonSource->GetString();
+
+    // Check for empty input
+    if (source.Size() == 0)
+    {
+        std::string errorMsg = "JSON file does not exist or is empty. ";
+        errorMsg += "An empty JSON instance is created.";
+        source.PrintSyntaxMsg(errorMsg, SYNTAX_MSG_TYPE_WARNING);
+
+        return;
+    }
+
+    // Check first important condition - global space must be an object.
+    if (!utilstr::BeginsAndEndsWith(source, '{', '}'))
+    {
+        std::string errorMsg = "JSON file does not contain an object. ";
+        errorMsg += "Correct format of the file would be: \"{..}\". ";
+        errorMsg += "Empty JSON object returned.";
+        source.PrintSyntaxMsg(errorMsg);
+
+        return;
+    }
+
+    // Here, by the condition above, we are certain that the global space
+    // is in fact a JSON object.
+    globalSpace = static_cast<JSONObject*>(resolve_json(source));
+}
+
 JSON::JSONNode* resolve_json(JSONString body)
 {	
-    // Example JSON:
-    // {"menu":{"id":"file","value":"File"}}
-
     // A JSON object
     if (utilstr::BeginsAndEndsWith(body, '{', '}'))
     {
@@ -311,45 +334,72 @@ JSON::JSONNode* resolve_json(JSONString body)
         JSON::JSONObject* object = new JSON::JSONObject;
         body = body.substr(1, body.Size() - 2);
 
-        // "menu":{"id":"file","value":"File"}
-        
-        // Iterate through "id": value pairs
-        while (true)
+        if (body.Size() == 0)
         {
-            // Expect '"'
-            if (body.at(0) != '"')
+            body.PrintSyntaxMsg("Expected an expression.");
+        }
+
+        // Iterate through "id": value pairs
+        do
+        {
+            // Pair to store member
+            std::pair<std::string, JSON::JSONNode*> member;
+            
+            // First is the identifier
+            size_t pos = 0;
+            std::string id = body.ScanString(pos);
+            member.first = id;
+
+            // Trim the identifier
+            body = body.substr(pos);
+
+            if (body.front() != ':')
             {
-                body.PrintSyntaxMsg("'\"' expected.");
+                body.PrintSyntaxMsg("Expected ':'.");
+                return nullptr;
+            }
+
+            // Trim the ':'
+            body = body.substr(1);
+
+            // Retrieve the body
+            
+            // If we are dealing with an object or a list
+            if (body.front() == '{' || body.front() == '[')
+            {
+                JSONString objectListBody = body.ScanListObjectBody(pos);
+                member.second = resolve_json(objectListBody);
+            }
+            else    // Some literal
+            {
+                JSONString literalBody = body.ScanLiteral(pos);
+                member.second = resolve_json(literalBody);
+            }
+
+            object->members.insert(member);
+
+            // Remove contents from the string.
+            body = body.substr(pos);
+
+            // If we processed the whole string, the object is processed.
+            if (body.Size() == 0)
+            {
                 break;
             }
 
-            // Find non-escaped '"'
-            size_t counter = 0;
-            bool escape = false;
-            std::string id;
-            for (counter = 0; counter < body.Size(); counter++)
+            if (body.front() == ',')
             {
-                char c = body.at(counter);
-                if (counter == 0)
-                {
-                    counter++;
-                    continue;       // We are looking for closing '"'
-                }
-
-                if (escape)
-                {
-                    switch (c)
-                    {
-                    
-                                                
-                    }
-                }
-                if (c == '\\') escape = true;
-                
-                if (c == '"') break;
-                counter++;
+                // Trim the comma
+                body = body.substr(1);
             }
-        }
+            else
+            {
+                // Hypothetically impossible situation, purely to avoid infinite loop.
+                body.PrintSyntaxMsg("Expected ','.");
+                break;
+            }
+
+        } while (true);
 
         return object;
     }
@@ -357,26 +407,75 @@ JSON::JSONNode* resolve_json(JSONString body)
     // A JSON list
     else if (utilstr::BeginsAndEndsWith(body, '[', ']'))
     {
-        std::cout << "List not implemented yet." << std::endl;
+        body = body.substr(1, body.Size() - 2);
+        if (body.Size() == 0) 
+        {
+            body.PrintSyntaxMsg("List cannot be empty.");
+            return nullptr;
+        }
+
+        JSON::JSONList* list = new JSON::JSONList();
+        size_t pos = 0;
+
+        // Read elements
+        do
+        {
+            if (body.front() == '{' || body.front() == '[')
+            {
+                JSONString objectListBody = body.ScanListObjectBody(pos);
+                list->elements.push_back(resolve_json(objectListBody));
+            }
+            else    // Some literal
+            {
+                JSONString literalBody = body.ScanLiteral(pos);
+                list->elements.push_back(resolve_json(literalBody));
+            }
+
+            // Remove everything before the current object
+            body = body.substr(pos);
+
+            // End of the list
+            if (body.Size() == 0)
+            {
+                break;
+            }
+
+            // If comma, delete it and start another iteration
+            if (body.front() == ',')
+            {
+                body = body.substr(1);
+            }
+            else
+            {
+                // Hypothetically impossible situation, purely to avoid infinite loop.
+                body.PrintSyntaxMsg("Expected ','.");
+                break;
+            }
+
+        } while (true);
+        return list;
     }
 
     // A string literal
-    /*else if (utilstr::BeginsAndEndsWith(body, '"'))
+    else if (utilstr::BeginsAndEndsWith(body, '"'))
     {
-        return new JSON::JSONLiteral<std::string>(utilstr::TrimOneChar(body),
-            JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING);
-    }*/
+        size_t pos = 0;
+        JSON::JSONLiteral<std::string>* literalPtr = new JSON::JSONLiteral<std::string>(body.ScanString(pos), JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING);
+    
+        // If there are any symbols after the string
+        if (body.Size() > pos)
+        {
+            body.PrintSyntaxMsg("Invalid characters after string literal.", SYNTAX_MSG_TYPE_ERROR, pos);
+        }
+
+        return literalPtr;
+    }
 
     // Numeric literal or invalid
     else
     {
-
+        body.PrintSyntaxMsg("Invalid expression.");
     }
 
     return new JSON::JSONObject();
-}
-
-int add(int a, int b)
-{
-    return a + b;
 }
