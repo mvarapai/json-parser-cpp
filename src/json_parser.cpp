@@ -6,8 +6,13 @@
 // Helper recursive function, assumes unprocessed strings
 JSON::JSONNode* resolve_json(JSONString body);
 
+// Create an initial JSONString, containing the whole trimmed data.
 JSONString JSONSource::GetString() { return JSONString(this, trimmedStr.data(), trimmedStr.size()); }
 
+// A simple state machine to be called from a loop with two reference variables,
+// tells whether or not current character is in a string.
+// Technically, inString for opening quote would be true, and for a closing false,
+// but in applications of this function it does not matter.
 void isInString(const char c, bool& escape, bool& inString)
 {
     // If '"' is in no escape sequence, it is either opening or closing quote.
@@ -106,11 +111,14 @@ std::string CleanJSON(std::string source)
     return result;
 }
 
+// Constructor of JSONSource - provider of underlying data to JSONString.
 JSONSource::JSONSource(std::string filename) 
     : filename(filename), 
     sourceStr(utilstr::ReadFromFile(filename)), 
     trimmedStr(CleanJSON(sourceStr)) { }
 
+// Main means for displaying a message. If message is an error, program cannot function
+// correctly and it exits.
 void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)const
 {
     // [ERROR] test1.json:2 - "X expected."
@@ -146,16 +154,14 @@ void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)
 }
 
 
-
-// Input: " \"TEXT\".. "
-// Output: TEXT, with
+// Given a JSONString starting with '"', retrieve the string literal.
+// If successfully terminated, returns std::string containing the literal,
+// and _Pos being equal to the position of character after closing '"'.
+// Parser uses following escape sequences:
 //  \\ -> backslash
 //  \n -> newline
 //  \t -> tab
 //  \" -> "
-// Ignores anything after closing '"', returns position of
-// first character after it.
-// Invalid string: return "".
 std::string JSONString::ScanString(size_t& _Pos)
 {
     if (at(0) != '"')
@@ -168,10 +174,10 @@ std::string JSONString::ScanString(size_t& _Pos)
     bool closingFound = false;
     std::string str;
 
-    size_t counter = 0;
-    for (counter = 1; counter < size; counter++)
+    size_t i;
+    for (i = 1; i < size; i++)
     {
-        char c = at(counter);
+        char c = at(i);
 
         // If this character follows \, it is an escape sequence
         if (escape)
@@ -192,7 +198,7 @@ std::string JSONString::ScanString(size_t& _Pos)
                 str += '\"';
                 break;
             default:
-                PrintSyntaxMsg("Valid escape sequence expected.", SYNTAX_MSG_TYPE_WARNING, counter);
+                PrintSyntaxMsg("Valid escape sequence expected.", SYNTAX_MSG_TYPE_WARNING, i);
             }
             continue;
         }
@@ -204,30 +210,32 @@ std::string JSONString::ScanString(size_t& _Pos)
             continue;
         }
 
-        // Closing '"' found!
+        // Closing '"' found
         if (c == '"')
         {
-            closingFound = true;
-            break;
+            _Pos = i + 1;
+            return str;
         }
 
         // Any other character
         str += c;
     }
 
-    // Analyze why loop was teminated
-    if (!closingFound)
-    {
-        PrintSyntaxMsg("'\"' expected.", SYNTAX_MSG_TYPE_ERROR, counter - 1);
-        return "";
-    }
-
-    _Pos = counter + 1;
+    // No closing '"' found.
+    PrintSyntaxMsg("'\"' expected.", SYNTAX_MSG_TYPE_ERROR, i - 1);    
+    _Pos = i;
     return str;
 }
 
+// Given JSONString starting with either '{' or '[', locates a
+// corresponding closing parentesis and returns substring containing
+// the contents including the parentheses, and position one character
+// after the closing parenthesis.
+// Example: input  = "{..[..]..{..{..}..}..}text"
+//          output = "{..[..]..{..{..}..}..}", _Pos = position of 't' in the substring.
 JSONString JSONString::ScanListObjectBody(size_t& _Pos)
 {
+    // Initial validity checks
     char closing;
     if (front() == '{') closing = '}';
     else if (front() == '[') closing = ']';
@@ -237,15 +245,23 @@ JSONString JSONString::ScanListObjectBody(size_t& _Pos)
         return *this;
     }
 
+    // Variables used by isInString(..)
     bool escape = false;
     bool inString = false;
+
+    // Number of opened parentheses
     size_t depth = 0;
+
+    // Iterate over whole string 
     size_t i;
     for (i = 0; i < size; i++)
     {
         const char c = at(i);
+
+        // This function provides all necessary string checks
         isInString(c, escape, inString);
         
+        // Perform depth increment and decrement
         if (!inString)
         {
             if (c == '{' || c == '[') depth++;
@@ -262,6 +278,8 @@ JSONString JSONString::ScanListObjectBody(size_t& _Pos)
                 return *this;
             }
 
+            // i is the position of closing parenthesis.
+            // We increment this position to include it into the substring.
             _Pos = i + 1;
             return substr(0, _Pos);
         }
@@ -270,6 +288,9 @@ JSONString JSONString::ScanListObjectBody(size_t& _Pos)
     return *this;
 }
 
+// Given JSONString, the function looks for a comma outside a string literal.
+// If found, returns a substring without the comma and _Pos of the comma.
+// If no comma found, returns this string and _Pos one symbol after.
 JSONString JSONString::ScanLiteral(size_t& _Pos)
 {
     bool escape = false;
@@ -284,16 +305,23 @@ JSONString JSONString::ScanLiteral(size_t& _Pos)
 
         if (c == ',' && !inString)
         {
+            // When substr(_Pos) is called afterwards,
+            // the comma is preserved for parser to perform further reasoning.
+            // substr(0, i), on the other hand, does not include that comma.
             _Pos = i;
             return substr(0, i);
         }
     }
 
-    // i == size
+    // Here, if no comma was detected, we return _Pos = size.
+    // That is, whole string is returned, and no substring can be
+    // found using _Pos, because it is the first element after the string end.
     _Pos = i;
     return substr(0, i);
 }
 
+// Entry point to creating a JSON object.
+// Performs some assertions and builds recursively the JSON syntax tree.
 JSON::JSON(const std::string& filename)
 {
     jsonSource = new JSONSource(filename);
@@ -323,145 +351,192 @@ JSON::JSON(const std::string& filename)
     // Here, by the condition above, we are certain that the global space
     // is in fact a JSON object.
     globalSpace = static_cast<JSONObject*>(resolve_json(source));
+
+    std::cout << "Successfully created JSON object!" << std::endl;
 }
 
+// Forward declarations for functions used in resolve_json(..)
+inline JSON::JSONNode* resolve_object(JSONString body);
+inline JSON::JSONNode* resolve_list(JSONString body);
+inline JSON::JSONNode* resolve_literal(JSONString body);
+inline JSON::JSONNode* resolve_number(JSONString body);
+
+// Main recursive body of the parser. Builds syntax tree by passing recursively
+// contents of objects, lists and literals to the new instance of this function,
+// which returns a pointer to corresponding nodes.
+// Builds on the structure of JSONSource and JSONString.
 JSON::JSONNode* resolve_json(JSONString body)
 {	
     // A JSON object
     if (utilstr::BeginsAndEndsWith(body, '{', '}'))
     {
-        // Create new JSON object and expose its members
-        JSON::JSONObject* object = new JSON::JSONObject;
-        body = body.substr(1, body.Size() - 2);
-
-        if (body.Size() == 0)
-        {
-            body.PrintSyntaxMsg("Expected an expression.");
-        }
-
-        // Iterate through "id": value pairs
-        do
-        {
-            // Pair to store member
-            std::pair<std::string, JSON::JSONNode*> member;
-            
-            // First is the identifier
-            size_t pos = 0;
-            std::string id = body.ScanString(pos);
-            member.first = id;
-
-            // Trim the identifier
-            body = body.substr(pos);
-
-            if (body.front() != ':')
-            {
-                body.PrintSyntaxMsg("Expected ':'.");
-                return nullptr;
-            }
-
-            // Trim the ':'
-            body = body.substr(1);
-
-            // Retrieve the body
-            
-            // If we are dealing with an object or a list
-            if (body.front() == '{' || body.front() == '[')
-            {
-                JSONString objectListBody = body.ScanListObjectBody(pos);
-                member.second = resolve_json(objectListBody);
-            }
-            else    // Some literal
-            {
-                JSONString literalBody = body.ScanLiteral(pos);
-                member.second = resolve_json(literalBody);
-            }
-
-            object->members.insert(member);
-
-            // Remove contents from the string.
-            body = body.substr(pos);
-
-            // If we processed the whole string, the object is processed.
-            if (body.Size() == 0)
-            {
-                break;
-            }
-
-            if (body.front() == ',')
-            {
-                // Trim the comma
-                body = body.substr(1);
-            }
-            else
-            {
-                // Hypothetically impossible situation, purely to avoid infinite loop.
-                body.PrintSyntaxMsg("Expected ','.");
-                break;
-            }
-
-        } while (true);
-
-        return object;
+        return resolve_object(body);
     }
 
     // A JSON list
     else if (utilstr::BeginsAndEndsWith(body, '[', ']'))
     {
-        body = body.substr(1, body.Size() - 2);
-        if (body.Size() == 0) 
+        return resolve_list(body);
+    }
+
+    return resolve_literal(body);
+}
+
+// Recursively resolve members of an object.
+inline JSON::JSONNode* resolve_object(JSONString body)
+{
+    // Create new JSON object and expose its members
+    JSON::JSONObject* object = new JSON::JSONObject;
+    body = body.substr(1, body.Size() - 2);
+
+    if (body.Size() == 0)
+    {
+        body.PrintSyntaxMsg("Expected an expression.");
+    }
+
+    // Iterate through "id": value pairs
+    do
+    {
+        // Pair to store member
+        std::pair<std::string, JSON::JSONNode*> member;
+
+        // First is the identifier
+        size_t pos = 0;
+        std::string id = body.ScanString(pos);
+        if (id.size() < 1)
         {
-            body.PrintSyntaxMsg("List cannot be empty.");
+            body.PrintSyntaxMsg("Expected valid identifier.");
             return nullptr;
         }
 
-        JSON::JSONList* list = new JSON::JSONList();
-        size_t pos = 0;
-
-        // Read elements
-        do
+        // Check for uniqueness
+        if (object->members.find(id) != object->members.end())
         {
-            if (body.front() == '{' || body.front() == '[')
-            {
-                JSONString objectListBody = body.ScanListObjectBody(pos);
-                list->elements.push_back(resolve_json(objectListBody));
-            }
-            else    // Some literal
-            {
-                JSONString literalBody = body.ScanLiteral(pos);
-                list->elements.push_back(resolve_json(literalBody));
-            }
+            // There already exists an object with such id.
+            body.PrintSyntaxMsg("Identifier is not unique.");
+            return nullptr;
+        }
 
-            // Remove everything before the current object
-            body = body.substr(pos);
+        // If the identifier is valid, write it
+        member.first = id;
 
-            // End of the list
-            if (body.Size() == 0)
-            {
-                break;
-            }
+        // "..":LIT(,..) -> :LIT(,..)
+        body = body.substr(pos);
+        if (body.front() != ':')
+        {
+            body.PrintSyntaxMsg("Expected ':'.");
+            return nullptr;
+        }
 
-            // If comma, delete it and start another iteration
-            if (body.front() == ',')
-            {
-                body = body.substr(1);
-            }
-            else
-            {
-                // Hypothetically impossible situation, purely to avoid infinite loop.
-                body.PrintSyntaxMsg("Expected ','.");
-                break;
-            }
+        // Trim the ':'
+        body = body.substr(1);
 
-        } while (true);
+        // Retrieve the body
+
+        // If we are dealing with an object or a list
+        if (body.front() == '{' || body.front() == '[')
+        {
+            JSONString objectListBody = body.ScanListObjectBody(pos);
+            member.second = resolve_json(objectListBody);
+        }
+        else    // Some literal
+        {
+            JSONString literalBody = body.ScanLiteral(pos);
+            member.second = resolve_json(literalBody);
+        }
+
+        object->members.insert(member);
+
+        // Remove contents from the string.
+        body = body.substr(pos);
+
+        // If we processed the whole string, the object is processed.
+        if (body.Size() == 0)
+        {
+            break;
+        }
+
+        if (body.front() == ',')
+        {
+            // Trim the comma
+            body = body.substr(1);
+        }
+        else
+        {
+            // Hypothetically impossible situation, purely to avoid infinite loop.
+            body.PrintSyntaxMsg("Expected ','.");
+            break;
+        }
+
+    } while (true);
+
+    return object;
+}
+
+// Resolve the contents of the list and recursively call
+// the constructors of its subnodes.
+inline JSON::JSONNode* resolve_list(JSONString body)
+{
+    body = body.substr(1, body.Size() - 2);
+
+    JSON::JSONList* list = new JSON::JSONList();
+    size_t pos = 0;
+
+    // Return an empty list
+    if (body.Size() == 0)
+    {
         return list;
     }
 
+    // Read elements
+    do
+    {
+        if (body.front() == '{' || body.front() == '[')
+        {
+            JSONString objectListBody = body.ScanListObjectBody(pos);
+            list->elements.push_back(resolve_json(objectListBody));
+        }
+        else    // Some literal
+        {
+            JSONString literalBody = body.ScanLiteral(pos);
+            list->elements.push_back(resolve_json(literalBody));
+        }
+
+        // Remove everything before the current object
+        body = body.substr(pos);
+
+        // End of the list
+        if (body.Size() == 0)
+        {
+            break;
+        }
+
+        // If comma, delete it and start another iteration
+        if (body.front() == ',')
+        {
+            body = body.substr(1);
+        }
+        else
+        {
+            // Hypothetically impossible situation, purely to avoid infinite loop.
+            body.PrintSyntaxMsg("Expected ','.");
+            break;
+        }
+
+    } while (true);
+    return list;
+}
+
+// If passed string is neither list nor object, it is dealth with as a literal.
+// Here, types bool and null are considered. For numerical, subfunction is called.
+inline JSON::JSONNode* resolve_literal(JSONString body)
+{
     // A string literal
-    else if (utilstr::BeginsAndEndsWith(body, '"'))
+    if (utilstr::BeginsAndEndsWith(body, '"'))
     {
         size_t pos = 0;
         JSON::JSONLiteral<std::string>* literalPtr = new JSON::JSONLiteral<std::string>(body.ScanString(pos), JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING);
-    
+
         // If there are any symbols after the string
         if (body.Size() > pos)
         {
@@ -471,11 +546,193 @@ JSON::JSONNode* resolve_json(JSONString body)
         return literalPtr;
     }
 
-    // Numeric literal or invalid
-    else
+    if (body.ToString() == "true")
     {
-        body.PrintSyntaxMsg("Invalid expression.");
+        return new JSON::JSONLiteral<bool>(true, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL);
     }
 
-    return new JSON::JSONObject();
+    if (body.ToString() == "false")
+    {
+        return new JSON::JSONLiteral<bool>(false, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL);
+    }
+
+    if (body.ToString() == "null")
+    {
+        return new JSON::JSONNull;
+    }
+
+    return resolve_number(body);
+}
+
+// Purpose: given a JSONString, create a node and return its address.
+// Numerical is supposed to be of format 'x.xE(+/-)x', x denoting some integer.
+inline JSON::JSONNode* resolve_number(JSONString body)
+{
+    // Start looking for numerical data
+    JSON::JSON_NODE_TYPE literalType = JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT;
+
+    bool fractional = false;    // true if '.' was detected
+    bool exponent = false;      // true if 'e/E' was detected
+
+    int exponentSign = 1;       // E(+/-)123
+    int sign = 1;               // Sign of the number
+    int part = 0;               // Start with whole part (0), and go in order
+    std::string number_str[3];  // 0 -> whole part, 1 -> fraction part, 2 -> exponent
+
+    // Special state where we want to retrieve the (optional) exponent sign.
+    bool waitForExponentSign = false;
+
+    // Start iterating through the string
+    for (size_t i = 0; i < body.Size(); i++)
+    {
+        const char c = body.at(i);
+
+        // For any digit that we discover
+        if (isdigit(c))
+        {
+            // Add the numerical to corresponding string
+            number_str[part] += c;
+            // No exponent sign specified, using '+' as default.
+            if (waitForExponentSign) waitForExponentSign = false;
+        }
+
+        // Unary minus
+        else if (c == '-' && i == 0)
+        {
+            sign = -1;
+        }
+
+        // Unary plus
+        else if (c == '+' && i == 0)
+        {
+            sign = 1;
+        }
+
+        // If previous element was 'e/E', we wait for the sign.
+        // By previous conditions, this brach assumes that the character
+        // is non-numeric, thus throwing an error if it is neither plus or minus.
+        else if (waitForExponentSign)
+        {
+            if (c == '+')
+            {
+                exponentSign = 1;
+            }
+            else if (c == '-')
+            {
+                exponentSign = -1;
+            }
+            else
+            {
+                body.PrintSyntaxMsg("Invalid literal.");
+                return nullptr;
+            }
+            // Exit the state of waiting for the sign
+            waitForExponentSign = false;
+        }
+
+        // Point discovered. Further action depends on the current state.
+        else if (c == '.')
+        {
+            // To this moment, no other point or exponent were discovered.
+            if (fractional || exponent)
+            {
+                body.PrintSyntaxMsg("Invalid literal.");
+                return nullptr;
+            }
+            // The state is changed to writing fraction value.
+            fractional = true;
+            part = 1;
+        }
+
+        // Exponent discovered. Further action depends on current state.
+        else if (c == 'e' || c == 'E')
+        {
+            // To be valid, we must not have discovered another exponent.
+            // It does not matter whether there is fractional part.
+            if (exponent)
+            {
+                body.PrintSyntaxMsg("Invalid literal.");
+                return nullptr;
+            }
+            // The state is changed to waiting for exponent sign.
+            // Afterwards, even if no sign provided, we read exponent value.
+            exponent = true;
+            waitForExponentSign = true;
+            part = 2;
+        }
+        // Invalid symbol detected.
+        else
+        {
+            body.PrintSyntaxMsg("Invalid literal.", SYNTAX_MSG_TYPE_ERROR, i);
+            return nullptr;
+        }
+    }
+
+    // Validation:
+    if (number_str[0].empty()                       // Whole part cannot be empty;
+        || (fractional && number_str[1].empty())    // If discovered '.', this part cannot be empty;
+        || (exponent && number_str[2].empty()))     // If discovered 'e/E', this part cannot be empty;
+    {
+        body.PrintSyntaxMsg("Invalid literal.");
+        return nullptr;
+    }
+
+    // At this point, we have:
+    //  1) A non-empty string with whole part, with sign stored in bool negative;
+    //  2) If fractional == true, non-empty string with fractional part;
+    //  3) If exponent == true, non-empty string with exponent, with sign stored in int exponentSign;
+
+    // Now, we need to do type inference:
+    //  Has negative exponent -> DOUBLE since we cannot guarantee that the result will be INT
+    //  Has fractional part -> DOUBLE
+    //  Otherwise -> INT
+    
+    // DOUBLE
+    if (fractional || (exponent && exponentSign == -1))
+    {
+        // This is guaranteed to be non-empty
+        double num = std::stoi(number_str[0]);
+
+        // Add the fractional part if there is one.
+        if (fractional)
+        {
+            double frac = std::stoi(number_str[1]);
+            num += frac / (pow(10, (double)number_str[1].size()));
+        }
+
+        // Apply the sign
+        num *= (float)sign;
+
+        // If we use an exponent
+        if (exponent)
+        {
+            double exp = std::stoi(number_str[2]);
+            exp *= (float)exponentSign;
+            num *= pow(10.0, exp);
+        }
+
+        // Lastly, create the literal node.
+        return new JSON::JSONLiteral<double>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE);
+    }
+    // INT
+    else
+    {
+        // This is guaranteed to be non-empty.
+        int num = std::stoi(number_str[0]);
+        num *= sign;
+        
+        // If we use an exponent
+        if (exponent)
+        {
+            // Here, exponent sign is guaranteed to be positive,
+            // so the exponent is calculated this way, since we
+            // want to avoid dealing with double in this case.
+            int exp = std::stoi(number_str[2]);
+            for (int i = 0; i < exp; i++)
+                num *= 10;
+        }
+
+        // Lastly, create the literal node.
+        return new JSON::JSONLiteral<int>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT);
+    }
 }

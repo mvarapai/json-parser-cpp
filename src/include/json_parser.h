@@ -17,8 +17,9 @@
 // Forward declaration to use in JSONSource
 class JSONString;
 
-
-// Class for dealing with JSON syntax error highlighing
+// JSONSource - class providing underlying data for JSONString's and used
+// for error reporting, where each JSONString knows its offset from the source start.
+// The class provides functionality to find a line and column of given character offset.
 class JSONSource
 {
     const std::string filename;
@@ -27,6 +28,7 @@ class JSONSource
     const std::string trimmedStr;	// String without whilespaces (outside strings), newlines and tabs.
                                     // This is the string we will work with from now on.
 
+    // JSONString class has to know about data pointer, while we want to hide it from everyone else.
     friend class JSONString;
     const char* data() { return trimmedStr.data(); }
 
@@ -41,6 +43,7 @@ public:
 
         Pos(size_t line, size_t col) : line(line), col(col) { }
 
+        // Pos comparison operator, used in testing.
         bool operator==(const Pos& other) const
         {
             return (line == other.line && col == other.col);
@@ -54,6 +57,7 @@ public:
     // This is supposed to be the only way to get JSONString not from another instance.
     JSONString GetString();
 
+    // Getter for file name, used in debugging.
     std::string GetFilename() { return filename; }
 };
 
@@ -91,7 +95,11 @@ private:
         : source(pSource), data(pData), size(size) { }
 public:
 
-    // Create a new JSONString object using string chunk
+    // Create a new JSONString object using string chunk.
+    // This function gives a no-throw guarantee as out-of-bound
+    // arguments are trimmed to the string size where possible.
+    // If substring is empty, original string is returned, with the
+    // exception of when _Count == 0, where just an empty string is returned.
     const JSONString substr(size_t _Off, size_t _Count)
     {
         // Specification check for the object
@@ -105,11 +113,11 @@ public:
             // Otherwise, trim it at the end
             return JSONString(source, data + _Off, size - _Off);
         }
-
+        // Regular substring
         return JSONString(source, data + _Off, _Count);
     }
 
-    // Substring from _Off till the end
+    // Substring from _Off inclusive till the end
     const JSONString substr(size_t _Off)
     {
         if (_Off > size)
@@ -132,6 +140,9 @@ public:
     // By creation, instance of JSONString cannot contain nullptr JSONSource pointer.
     JSONSource* GetSource() const { return source; }
 
+
+    // Some common string functionality
+
     size_t Size() const { return size; }
 
     const char at(size_t index) const
@@ -150,6 +161,7 @@ public:
         return std::string(data, size);
     }
 
+    // String-specific message handling
     void PrintSyntaxMsg(std::string errorText, int msgType = 0, size_t _Off = 0) const;
 
     // Scan string at the beginning, bounded by '"'.
@@ -167,7 +179,8 @@ class JSON
 public:
     // Create JSON from file
     JSON(const std::string& filename);
-    // Default copy and assignment
+
+    // Forbid copying (potentially to be implemented later)
     JSON& operator=(const JSON& rhs) = delete;
     JSON(const JSON& other) = delete;
 
@@ -179,11 +192,16 @@ public:
         JSON_NODE_TYPE_LIST = 1,
         JSON_NODE_TYPE_LITERAL_STRING = 2,
         JSON_NODE_TYPE_LITERAL_INT = 3,
+        JSON_NODE_TYPE_LITERAL_DOUBLE = 4,
+        JSON_NODE_TYPE_LITERAL_BOOL = 5,
+        JSON_NODE_TYPE_LITERAL_NULL = 6,
     };
 
     bool isLiteral(JSON_NODE_TYPE type) { return (int)type > 1; }
 
+
     // Basic node object. Contains only type, cannot be instantiated.
+    // All elements of JSON syntax tree are of that object.
     class JSONNode
     {
         // It is expected that type of the node cannot be changed during runtime.
@@ -191,31 +209,69 @@ public:
 
     public:
         JSONNode(JSON_NODE_TYPE nodeType) : type(nodeType) { }
+
+        // Literals do not need to implement this function
+        virtual ~JSONNode() 
+        {
+        }
     };
+
 
     // JSON object - contains a list of identifiers and links further down the tree.
-    struct JSONObject : JSONNode
+    class JSONObject : public JSONNode
     {
+    public:
+        std::unordered_map<std::string, JSONNode*> members;
+
         JSONObject() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT) 
         {
-            std::cout << "Created object!" << std::endl;
         }
-        std::unordered_map<std::string, JSONNode*> members;
+
+        ~JSONObject() override
+        {
+            for (std::pair member : members)
+            {
+                if (member.second) delete member.second;
+                member.second = nullptr;
+            }
+        }
     };
 
-    //	List - special structure in the tree, works parallel to JSONObject.
-    struct JSONList : public JSONNode
+
+    //	List - special structure in the tree, works in parallel to JSONObject.
+    class JSONList : public JSONNode
     {
+    public:
+        std::vector<JSONNode*> elements;
+
         JSONList() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LIST) 
         {
-            std::cout << "Created list!" << std::endl;
         }
-        std::vector<JSONNode*> elements;
+
+        ~JSONList() override
+        {
+            for (JSONNode* e : elements)
+            {
+                if (e) delete e;
+                e = nullptr;
+            }
+        }
     };
+
+
+    // Special node type to handle nullable values
+    class JSONNull : public JSONNode
+    {
+    public:
+        JSONNull() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_NULL)
+        {
+        }
+    };
+
 
     // JSON literal - leaf of the tree.
     template <typename T>
-    struct JSONLiteral : public JSONNode
+    class JSONLiteral : public JSONNode
     {
     private:
         T value;
@@ -224,27 +280,27 @@ public:
         JSONLiteral(T literalValue, JSON_NODE_TYPE literalType) :
             value(literalValue), JSONNode(literalType) 
         {
-            std::cout << "Created literal with value: " << literalValue << std::endl;
         }
 
         T GetValue() { return value; }
         JSON_NODE_TYPE GetType() { return type; }
+
+        ~JSONLiteral()
+        {
+        }
     };
 
-
-    ~JSON()
-    {
-        // TODO: Tree deallocation
-        //delete jsonSource;
-    }
 private:
     // Root of the JSON sytax tree, must be a JSON object.
     JSONObject* globalSpace = nullptr;
     JSONSource* jsonSource = nullptr;
 
-    void Release()
+public:
+
+    ~JSON()
     {
-        // Go down the syntax tree and call Release on these nodes
+        if (globalSpace) delete globalSpace;
+        globalSpace = nullptr;
     }
 
 };
