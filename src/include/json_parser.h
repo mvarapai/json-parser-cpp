@@ -50,7 +50,7 @@ public:
         }
     };
 
-    JSONSource(std::string filename);				// Read and trim source file
+    JSONSource(std::string filename);				// Read and trim source fi
     Pos GetSymbolSourcePosition(size_t trimmedPos);	// Iterate the file to find position
 
     // Return an initial JSONString, with offset of zero and whole size.
@@ -173,6 +173,8 @@ public:
     JSONString ScanLiteral(size_t& _Pos);
 };
 
+class JSONInterface;
+
 // Class to represent JSON syntax tree.
 class JSON
 {
@@ -187,33 +189,61 @@ public:
 public:
     enum class JSON_NODE_TYPE
     {
-        JSON_NODE_TYPE_INVALID = -1,
+        JSON_NODE_TYPE_LITERAL_NULL = -1,
         JSON_NODE_TYPE_OBJECT = 0,
         JSON_NODE_TYPE_LIST = 1,
         JSON_NODE_TYPE_LITERAL_STRING = 2,
         JSON_NODE_TYPE_LITERAL_INT = 3,
         JSON_NODE_TYPE_LITERAL_DOUBLE = 4,
         JSON_NODE_TYPE_LITERAL_BOOL = 5,
-        JSON_NODE_TYPE_LITERAL_NULL = 6,
     };
 
-    bool isLiteral(JSON_NODE_TYPE type) { return (int)type > 1; }
+    static std::string ToString(JSON_NODE_TYPE type)
+    {
+        switch (type) {
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_NULL:
+            return "NULL";
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT:
+            return "OBJECT";
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_LIST:
+            return "LIST";
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING:
+            return "STRING";
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT:
+            return "INT";
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE:
+            return "DOUBLE";
+        case JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL:
+            return "BOOL";
+        default:
+            return "UNKNOWN";
+        }
+    }
+
+    static bool isLiteral(JSON_NODE_TYPE type) { return (int)type > 1; }
 
 
     // Basic node object. Contains only type, cannot be instantiated.
     // All elements of JSON syntax tree are of that object.
     class JSONNode
     {
+        JSONNode* parent = nullptr;     // Can only be nullptr if it is the root object
         // It is expected that type of the node cannot be changed during runtime.
-        const JSON_NODE_TYPE type = JSON_NODE_TYPE::JSON_NODE_TYPE_INVALID;
+        const JSON_NODE_TYPE type = JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_NULL;
 
     public:
-        JSONNode(JSON_NODE_TYPE nodeType) : type(nodeType) { }
+        JSONNode(JSON_NODE_TYPE nodeType, JSONNode* parent) : type(nodeType), parent(parent) { }
+
+        JSON_NODE_TYPE GetType() const { return type; }
 
         // Literals do not need to implement this function
         virtual ~JSONNode() 
         {
         }
+
+        JSONNode* GetParent() { return parent; }
+
+        friend class JSONInterface;
     };
 
 
@@ -223,8 +253,27 @@ public:
     public:
         std::unordered_map<std::string, JSONNode*> members;
 
-        JSONObject() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT) 
+        JSONObject(JSONNode* parent) : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT, parent) 
         {
+        }
+
+        void ListMembers(bool showValue = false, unsigned int depth = 0,
+            unsigned int maxDepth = UINT32_MAX);
+
+        JSONNode* Find(std::string identifier)
+        {
+            // Cannot find this member
+            if (members.find(identifier) == members.end())
+            {
+                std::string errorMsg = "[ERROR] Cannot find member \"";
+                errorMsg += identifier;
+                errorMsg += "\" of the object.";
+                std::cout << errorMsg << std::endl;
+                return nullptr;
+            }
+
+            // Node is an object, and given identifier exists
+            return members.at(identifier);
         }
 
         ~JSONObject() override
@@ -244,9 +293,22 @@ public:
     public:
         std::vector<JSONNode*> elements;
 
-        JSONList() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LIST) 
+        JSONList(JSONNode* parent) : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LIST, parent) 
         {
         }
+
+        JSONNode* Find(size_t index)
+        {
+            if (index >= elements.size())
+            {
+                std::cout << "[ERROR] Tried to access an out-of-bound index." << std::endl;
+                return nullptr;
+            }
+            return elements.at(index);
+        }
+
+        void ListMembers(bool showValues = false,
+            unsigned int depth = 0, unsigned int maxDepth = UINT32_MAX);
 
         ~JSONList() override
         {
@@ -263,7 +325,7 @@ public:
     class JSONNull : public JSONNode
     {
     public:
-        JSONNull() : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_NULL)
+        JSONNull(JSONNode* parent) : JSONNode(JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_NULL, parent)
         {
         }
     };
@@ -277,8 +339,8 @@ public:
         T value;
 
     public:
-        JSONLiteral(T literalValue, JSON_NODE_TYPE literalType) :
-            value(literalValue), JSONNode(literalType) 
+        JSONLiteral(T literalValue, JSON_NODE_TYPE literalType, JSONNode* parent) :
+            value(literalValue), JSONNode(literalType, parent) 
         {
         }
 
@@ -303,4 +365,53 @@ public:
         globalSpace = nullptr;
     }
 
+    friend class JSONInterface;
+    JSONInterface CreateInterface();
+};
+
+std::string getLiteralValue(JSON::JSONNode* node);
+
+// Class used to traverse JSON syntax tree
+class JSONInterface
+{
+     JSON::JSONObject* currentObject;
+     std::string currentObjectName = "~";
+
+     JSON::JSONNode* tree_walk(std::string request);
+
+public:
+
+    JSONInterface(JSON::JSONObject* object) : currentObject(object) 
+    {
+    }
+
+    std::string ListMembers(bool showValues, unsigned int maxDepth)
+    {
+        currentObject->ListMembers(showValues, 0, maxDepth);
+        return "";
+    }
+
+    std::string Select(std::string request);
+
+    void Back(unsigned int steps);
+
+    // WARNING: trying to get a literal of another type will
+    // give unpredictable result.
+    // Always check the type beforehand.
+    template <typename T>
+    bool GetValue(JSON::JSONNode* node, T& value)
+    {
+        if (!node)
+        {
+            return false;
+        }
+
+        if (JSON::isLiteral(node->GetType()))
+        {
+            JSON::JSONLiteral<T>* literal = (JSON::JSONLiteral<T>*)node;
+            value = literal->GetValue();
+            return true;
+        }
+        return false;
+    }
 };

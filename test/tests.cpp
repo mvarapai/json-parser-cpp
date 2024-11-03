@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include "json_parser.h"
+#include "utilstr.h"
 
 TEST_CASE("Correctly find initial symbol position from trimmed string", "[JSONSource]")
 {
@@ -70,4 +71,15 @@ TEST_CASE("Scanning objects and lists", "[JSONString]")
 	body = body.ScanListObjectBody(pos);
 	REQUIRE(!body.ToString().compare("{\"value\":\"New\",\"onclick\":\"CreateNewDoc()\"}"));
 	REQUIRE(pos == 42);
+}
+
+TEST_CASE("Scan index correctly", "[CLI]")
+{
+	size_t pos = 0;
+	std::string str = "something[A.B[5]][13]";
+	REQUIRE(utilstr::ScanIndex(str, pos) == "A.B[5]");
+	REQUIRE(str.at(pos) == '[');
+
+	REQUIRE(utilstr::ScanIndex(str, pos) == "13");
+	REQUIRE(pos == str.size());
 }

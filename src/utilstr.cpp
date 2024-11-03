@@ -67,9 +67,6 @@ std::string utilstr::ReadFromFile(const std::string& filename)
 
     if (!t.is_open())
     {
-        std::string errorStr =  "[ERROR] Cannot open the file. The behavior is well-implemented ";
-        errorStr +=             "and an empty string is returned.";
-        std::cerr << errorStr << std::endl;
         return "";
     }
 
@@ -81,6 +78,8 @@ std::string utilstr::ReadFromFile(const std::string& filename)
     std::string buffer(size, ' ');
     t.seekg(0);
     t.read(&buffer[0], size);
+
+    t.close();
 
     return buffer;
 }
@@ -116,7 +115,6 @@ std::string utilstr::TrimOneChar(std::string str)
     return str;
 }
 
-// TODO: ignore {} and []
 bool utilstr::Split(std::string src, char delimiter, std::string& substring, size_t& prevPos)
 {
     if (prevPos > src.size()) return false;
@@ -130,3 +128,43 @@ bool utilstr::Split(std::string src, char delimiter, std::string& substring, siz
     return true;
 }
 
+std::string utilstr::ScanIndex(std::string source, size_t& pos)
+{
+    pos = source.find('[', pos);
+    if (pos == source.npos)
+    {
+        std::string errorMsg = "[ERROR] No '[' found.\n";
+        std::cout << errorMsg;
+        return "";
+    }
+
+    size_t depth = 0;
+    size_t startPos = pos + 1;
+
+    // Iterate through the rest of string, startng with '['
+    for (size_t i = pos; i < source.size(); i++)
+    {
+        const char c = source.at(i);
+
+        if (c == '[') depth++;
+        if (c == ']') depth--;
+
+        if (depth == 0)
+        {
+            pos = i + 1;
+            return source.substr(startPos, i - startPos);
+        }
+    }
+
+    std::cout << "[ERROR] No closing parenthesis." << std::endl;
+    return "";
+}
+
+bool utilstr::IsIntLiteral(std::string str)
+{
+    for (char c : str)
+    {
+        if (!isdigit(c)) return false;
+    }
+    return true;
+}

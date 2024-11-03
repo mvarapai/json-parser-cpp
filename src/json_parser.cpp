@@ -1,10 +1,12 @@
 #include "json_parser.h"
 #include "utilstr.h"
+#include "command.h"
 
 #include <iostream>
+#include <cmath>
 
 // Helper recursive function, assumes unprocessed strings
-JSON::JSONNode* resolve_json(JSONString body);
+JSON::JSONNode* resolve_json(JSONString body, JSON::JSONNode* parent);
 
 // Create an initial JSONString, containing the whole trimmed data.
 JSONString JSONSource::GetString() { return JSONString(this, trimmedStr.data(), trimmedStr.size()); }
@@ -127,13 +129,13 @@ void JSONString::PrintSyntaxMsg(std::string errorText, int msgType, size_t _Off)
     switch (msgType)
     {
     case 0:
-        msg = "\n[ERROR]";
+        msg = "[ERROR]";
         break;
     case 1:
-        msg = "\n[WARNING]";
+        msg = "[WARNING]";
         break;
     default:
-        msg = "\n[MESSAGE]";
+        msg = "[MESSAGE]";
     }
 
     msg += " ";
@@ -301,7 +303,7 @@ JSONString JSONString::ScanLiteral(size_t& _Pos)
     for (i = 0; i < size; i++)
     {
         const char c = at(i);
-        isInString(i, escape, inString);
+        isInString(c, escape, inString);
 
         if (c == ',' && !inString)
         {
@@ -330,9 +332,8 @@ JSON::JSON(const std::string& filename)
     // Check for empty input
     if (source.Size() == 0)
     {
-        std::string errorMsg = "JSON file does not exist or is empty. ";
-        errorMsg += "An empty JSON instance is created.";
-        source.PrintSyntaxMsg(errorMsg, SYNTAX_MSG_TYPE_WARNING);
+        std::string errorMsg = "JSON file does not exist or is empty.";
+        source.PrintSyntaxMsg(errorMsg, SYNTAX_MSG_TYPE_ERROR);
 
         return;
     }
@@ -350,43 +351,41 @@ JSON::JSON(const std::string& filename)
 
     // Here, by the condition above, we are certain that the global space
     // is in fact a JSON object.
-    globalSpace = static_cast<JSONObject*>(resolve_json(source));
-
-    std::cout << "Successfully created JSON object!" << std::endl;
+    globalSpace = static_cast<JSONObject*>(resolve_json(source, globalSpace));
 }
 
 // Forward declarations for functions used in resolve_json(..)
-inline JSON::JSONNode* resolve_object(JSONString body);
-inline JSON::JSONNode* resolve_list(JSONString body);
-inline JSON::JSONNode* resolve_literal(JSONString body);
-inline JSON::JSONNode* resolve_number(JSONString body);
+inline JSON::JSONNode* resolve_object(JSONString body, JSON::JSONNode* parent);
+inline JSON::JSONNode* resolve_list(JSONString body, JSON::JSONNode* parent);
+inline JSON::JSONNode* resolve_literal(JSONString body, JSON::JSONNode* parent);
+inline JSON::JSONNode* resolve_number(JSONString body, JSON::JSONNode* parent);
 
 // Main recursive body of the parser. Builds syntax tree by passing recursively
 // contents of objects, lists and literals to the new instance of this function,
 // which returns a pointer to corresponding nodes.
 // Builds on the structure of JSONSource and JSONString.
-JSON::JSONNode* resolve_json(JSONString body)
+JSON::JSONNode* resolve_json(JSONString body, JSON::JSONNode* parent)
 {	
     // A JSON object
     if (utilstr::BeginsAndEndsWith(body, '{', '}'))
     {
-        return resolve_object(body);
+        return resolve_object(body, parent);
     }
 
     // A JSON list
     else if (utilstr::BeginsAndEndsWith(body, '[', ']'))
     {
-        return resolve_list(body);
+        return resolve_list(body, parent);
     }
 
-    return resolve_literal(body);
+    return resolve_literal(body, parent);
 }
 
 // Recursively resolve members of an object.
-inline JSON::JSONNode* resolve_object(JSONString body)
+inline JSON::JSONNode* resolve_object(JSONString body, JSON::JSONNode* parent)
 {
     // Create new JSON object and expose its members
-    JSON::JSONObject* object = new JSON::JSONObject;
+    JSON::JSONObject* object = new JSON::JSONObject(parent);
     body = body.substr(1, body.Size() - 2);
 
     if (body.Size() == 0)
@@ -437,12 +436,12 @@ inline JSON::JSONNode* resolve_object(JSONString body)
         if (body.front() == '{' || body.front() == '[')
         {
             JSONString objectListBody = body.ScanListObjectBody(pos);
-            member.second = resolve_json(objectListBody);
+            member.second = resolve_json(objectListBody, object);
         }
         else    // Some literal
         {
             JSONString literalBody = body.ScanLiteral(pos);
-            member.second = resolve_json(literalBody);
+            member.second = resolve_json(literalBody, object);
         }
 
         object->members.insert(member);
@@ -475,11 +474,11 @@ inline JSON::JSONNode* resolve_object(JSONString body)
 
 // Resolve the contents of the list and recursively call
 // the constructors of its subnodes.
-inline JSON::JSONNode* resolve_list(JSONString body)
+inline JSON::JSONNode* resolve_list(JSONString body, JSON::JSONNode* parent)
 {
     body = body.substr(1, body.Size() - 2);
 
-    JSON::JSONList* list = new JSON::JSONList();
+    JSON::JSONList* list = new JSON::JSONList(parent);
     size_t pos = 0;
 
     // Return an empty list
@@ -494,12 +493,12 @@ inline JSON::JSONNode* resolve_list(JSONString body)
         if (body.front() == '{' || body.front() == '[')
         {
             JSONString objectListBody = body.ScanListObjectBody(pos);
-            list->elements.push_back(resolve_json(objectListBody));
+            list->elements.push_back(resolve_json(objectListBody, list));
         }
         else    // Some literal
         {
             JSONString literalBody = body.ScanLiteral(pos);
-            list->elements.push_back(resolve_json(literalBody));
+            list->elements.push_back(resolve_json(literalBody, list));
         }
 
         // Remove everything before the current object
@@ -529,13 +528,14 @@ inline JSON::JSONNode* resolve_list(JSONString body)
 
 // If passed string is neither list nor object, it is dealth with as a literal.
 // Here, types bool and null are considered. For numerical, subfunction is called.
-inline JSON::JSONNode* resolve_literal(JSONString body)
+inline JSON::JSONNode* resolve_literal(JSONString body, JSON::JSONNode* parent)
 {
     // A string literal
     if (utilstr::BeginsAndEndsWith(body, '"'))
     {
         size_t pos = 0;
-        JSON::JSONLiteral<std::string>* literalPtr = new JSON::JSONLiteral<std::string>(body.ScanString(pos), JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING);
+        JSON::JSONLiteral<std::string>* literalPtr = new JSON::JSONLiteral<std::string>(
+            body.ScanString(pos), JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING, parent);
 
         // If there are any symbols after the string
         if (body.Size() > pos)
@@ -548,25 +548,25 @@ inline JSON::JSONNode* resolve_literal(JSONString body)
 
     if (body.ToString() == "true")
     {
-        return new JSON::JSONLiteral<bool>(true, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL);
+        return new JSON::JSONLiteral<bool>(true, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL, parent);
     }
 
     if (body.ToString() == "false")
     {
-        return new JSON::JSONLiteral<bool>(false, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL);
+        return new JSON::JSONLiteral<bool>(false, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL, parent);
     }
 
     if (body.ToString() == "null")
     {
-        return new JSON::JSONNull;
+        return new JSON::JSONNull(parent);
     }
 
-    return resolve_number(body);
+    return resolve_number(body, parent);
 }
 
 // Purpose: given a JSONString, create a node and return its address.
 // Numerical is supposed to be of format 'x.xE(+/-)x', x denoting some integer.
-inline JSON::JSONNode* resolve_number(JSONString body)
+inline JSON::JSONNode* resolve_number(JSONString body, JSON::JSONNode* parent)
 {
     // Start looking for numerical data
     JSON::JSON_NODE_TYPE literalType = JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT;
@@ -712,7 +712,7 @@ inline JSON::JSONNode* resolve_number(JSONString body)
         }
 
         // Lastly, create the literal node.
-        return new JSON::JSONLiteral<double>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE);
+        return new JSON::JSONLiteral<double>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE, parent);
     }
     // INT
     else
@@ -733,6 +733,276 @@ inline JSON::JSONNode* resolve_number(JSONString body)
         }
 
         // Lastly, create the literal node.
-        return new JSON::JSONLiteral<int>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT);
+        return new JSON::JSONLiteral<int>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT, parent);
     }
+}
+
+JSONInterface JSON::CreateInterface()
+{
+    return JSONInterface(globalSpace);
+}
+
+// Relative to local object, find the node at this request
+// Example: A.B[A.C[2]]
+std::string JSONInterface::Select(std::string request)
+{
+    JSON::JSONNode* node = tree_walk(request);
+
+    if (!node)
+    {
+        return "Could not select an object.\n";
+    }
+
+    if (node->GetType() != JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT)
+    {
+        return "Can only select a node with type OBJECT.\n";
+    }
+
+    currentObject = (JSON::JSONObject*)node;
+    return "Successfully selected new object.";
+}
+
+JSON::JSONNode* JSONInterface::tree_walk(std::string request)
+{
+    JSON::JSONNode* current = currentObject;
+
+    size_t prevPos = 0;
+    size_t pos = 0;
+
+    while (pos < request.size())
+    {
+        const char c = request.at(pos);
+
+        if (c == '[')
+        {
+            std::string index = utilstr::ScanIndex(request, pos);
+
+            // Retrieve index value
+
+            size_t indexNum;
+
+            // At some point, we will encounter an int literal index
+            if (utilstr::IsIntLiteral(index)) indexNum = std::stoi(index);
+            else    // Do a recursive call
+            {
+                JSON::JSONNode* indexNode = tree_walk(index);
+                if (!indexNode)
+                    return nullptr;
+                if (indexNode->GetType() != JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT)
+                {
+                    std::cout << "[ERROR] Tried to access a list using non-numeric index." << std::endl;
+                    return nullptr;
+                }
+
+                JSON::JSONLiteral<int>* indexIntLiteral = (JSON::JSONLiteral<int>*)indexNode;
+                indexNum = indexIntLiteral->GetValue();
+            
+            }
+
+            // Here, index is known, retrieve next node
+            if (current->GetType() != JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LIST)
+            {
+                std::cout << "[ERROR] Tried to access a non-list element with an index." << std::endl;
+                return nullptr;
+            }
+
+            JSON::JSONList* list = (JSON::JSONList*)current;
+            if (!(current = list->Find(indexNum)))
+            {
+                return nullptr;
+            }
+        }
+
+        // If dot detected or at the start
+        else if (c == '.' || pos == 0)
+        {
+
+            // Move object after the dot
+            if (pos != 0) prevPos = pos + 1;
+            pos = request.find_first_of(".[", prevPos);
+            std::string identifier = request.substr(prevPos, pos - prevPos);
+
+            // Check if current node is an object
+            if (current->GetType() != JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT)
+            {
+                std::cout << "[ERROR] Tried to access a member \"" 
+                    << identifier << "\" of non-object element" << std::endl;
+                return nullptr;
+            }
+
+            JSON::JSONObject* obj = (JSON::JSONObject*)current;
+            
+            if (!(current = obj->Find(identifier)))
+            {
+                return nullptr;
+            }
+        }
+
+        else
+        {
+            std::cout << "Invalid situation." << std::endl;
+            return nullptr;
+        }
+    }
+    return current;
+}
+
+std::string getLiteralValue(JSON::JSONNode* node)
+{
+    JSON::JSON_NODE_TYPE type = node->GetType();
+    std::string result;
+
+    switch (type)
+    {
+    case JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING:
+        result += "\"";
+        result += ((JSON::JSONLiteral<std::string>*)node)->GetValue();
+        result += "\"";
+        break;
+    case JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_BOOL:
+        bool valueB;
+        valueB = ((JSON::JSONLiteral<bool>*)node)->GetValue();
+        if (valueB) result += "true";
+        else result += "false";
+        break;
+    case JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT:
+        int valueI;
+        valueI = ((JSON::JSONLiteral<int>*)node)->GetValue();
+        result += std::to_string(valueI);
+        break;
+    case JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE:
+        double valueD;
+        valueD = ((JSON::JSONLiteral<double>*)node)->GetValue();
+        result += std::to_string(valueD);
+        break;
+    case JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_NULL:
+        result += "null";
+        break;
+    default:
+        result += "Unknown";
+    }
+
+    return result;
+}
+
+void JSON::JSONObject::ListMembers(bool showValues,
+    unsigned int depth, unsigned int maxDepth)
+{
+    ConsoleTable<2> table({ 2, 2 }, depth);
+
+    for (std::pair<std::string, JSONNode*> member : members)
+    {
+        JSON_NODE_TYPE type = member.second->GetType();
+
+        // Assemble first column
+        
+        std::string col1 = member.first;
+
+
+        std::string col2 = ": ";
+        col2 += ToString(type);
+
+        // Print data to console
+        table.PrintLine({ col1, col2 });
+
+        // Print values
+
+        if (isLiteral(type) && showValues)
+        {
+            table.PrintLine({ std::string("= ") + getLiteralValue(member.second), "" });
+        }
+        
+        if (depth < maxDepth)
+        {
+            if (type == JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT)
+            {
+                JSONObject* obj = (JSONObject*)member.second;
+                obj->ListMembers(showValues, depth + 1, maxDepth);
+                std::cout << std::endl;
+            }
+
+            if (type == JSON_NODE_TYPE::JSON_NODE_TYPE_LIST)
+            {
+                JSONList* list = (JSONList*)member.second;
+                list->ListMembers(showValues, depth + 1, maxDepth);
+                std::cout << std::endl;
+            }
+        }
+    }
+}
+
+void JSON::JSONList::ListMembers(bool showValues,
+    unsigned int depth, unsigned int maxDepth)
+{
+    ConsoleTable<2> table({ 2, 2 }, depth);
+
+    size_t index = 0;
+    for (JSONNode* element : elements)
+    {
+        JSON_NODE_TYPE type = element->GetType();
+
+        // Assemble first column
+
+        std::string col1 = "[";
+        col1 += std::to_string(index);
+        col1 += "]";
+
+        std::string col2 = ": ";
+        col2 += ToString(type);
+
+        // Print data to console
+        table.PrintLine({ col1, col2 });
+
+        if (isLiteral(type) && showValues)
+        {
+            table.PrintLine({ std::string("= ") + getLiteralValue(element), ""});
+        }
+
+
+        if (depth < maxDepth)
+        {
+            if (type == JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT)
+            {
+                JSONObject* obj = (JSONObject*)element;
+                obj->ListMembers(showValues, depth + 1, maxDepth);
+                std::cout << std::endl;
+            }
+
+            if (type == JSON_NODE_TYPE::JSON_NODE_TYPE_LIST)
+            {
+                JSONList* list = (JSONList*)element;
+                list->ListMembers(showValues, depth + 1, maxDepth);
+                std::cout << std::endl;
+            }
+        }
+        index++;
+    }
+}
+
+// Can only return JSON objects
+JSON::JSONNode* recursive_back(JSON::JSONNode* ptr, unsigned int steps)
+{
+    JSON::JSONNode* parent = ptr->GetParent();
+
+    // Reached the root
+    if (!parent)
+    {
+        return ptr;
+    }
+
+    if (parent->GetType() == JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT)
+    {
+        steps--;
+    }
+
+    if (steps == 0)
+    {
+        return parent;
+    }
+    return recursive_back(parent, steps);
+}
+
+void JSONInterface::Back(unsigned int steps)
+{
+    currentObject = (JSON::JSONObject*)recursive_back(currentObject, steps);
 }

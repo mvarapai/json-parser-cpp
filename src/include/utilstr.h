@@ -53,4 +53,10 @@ namespace utilstr
     //  substring is an out variable, where the subsring is stored.
     //  Argument prevPos is to be declared outside the loop and initialized with value 0.
     bool Split(std::string src, char delimiter, std::string& substring, size_t& prevPos);
+
+    // pos is an inout parameter
+    std::string ScanIndex(std::string source, size_t& pos);
+
+    bool IsIntLiteral(std::string str);
+
 };
