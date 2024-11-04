@@ -6,6 +6,8 @@
 #include <iostream>
 #include <cmath>
 
+static constexpr char SeparatorChar = '-';
+
 // Helper recursive function, assumes unprocessed strings
 JSON::JSONNode* resolve_json(JSONString body, JSON::JSONNode* parent);
 
@@ -740,6 +742,7 @@ void JSON::JSONObject::ListMembers(bool showValues,
     unsigned int depth, unsigned int maxDepth)
 {
     ConsoleTable<2> table({ 2, 2 }, depth);
+    table.PrintSeparator(SeparatorChar);
 
     for (std::pair<std::string, JSONNode*> member : members)
     {
@@ -780,12 +783,14 @@ void JSON::JSONObject::ListMembers(bool showValues,
             }
         }
     }
+    table.PrintSeparator(SeparatorChar);
 }
 
 void JSON::JSONList::ListMembers(bool showValues,
     unsigned int depth, unsigned int maxDepth)
 {
     ConsoleTable<2> table({ 2, 2 }, depth);
+    table.PrintSeparator(SeparatorChar);
 
     size_t index = 0;
     for (JSONNode* element : elements)
@@ -828,6 +833,7 @@ void JSON::JSONList::ListMembers(bool showValues,
         }
         index++;
     }
+    table.PrintSeparator(SeparatorChar);
 }
 
 // Can only return JSON objects

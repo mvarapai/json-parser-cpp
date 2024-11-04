@@ -44,7 +44,5 @@ int main(int argc, char* argv[])
         std::cout << ProcessInput(command, interface) << std::endl;
     }
 
-    // Do stuff with JSON..
-
     return 0;
 }

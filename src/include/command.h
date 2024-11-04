@@ -88,4 +88,18 @@ public:
             std::cout << std::string(tabOffset, '\t') << line << std::endl;
         }
     }
+
+    void PrintSeparator(const char c)
+    {
+        size_t length = 0;
+        for (int n : columnWidths) length += n;
+
+        length *= TabSize;
+        std::string separator(length, c);
+
+        size_t offset = tabOffset;
+        std::string offsetStr = std::string(offset, '\t');
+
+        std::cout << offsetStr + separator << std::endl;
+    }
 };
