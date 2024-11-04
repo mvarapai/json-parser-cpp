@@ -34,7 +34,7 @@ public:
         for (std::string s : elements)
         {
             int columnSize = columnWidths[i] * TabSize - 1;
-            int numLines = s.size() / columnSize;
+            int numLines = (int)s.size() / columnSize;
             if (s.size() % columnSize > 0) numLines++;
 
             if (numLines > maxNumLines) maxNumLines = numLines;
@@ -50,8 +50,8 @@ public:
             int columnSize = columnWidths[i] * TabSize - 1;
 
             // Get the amout of lines for the string
-            int numLines = currentString.size() / columnSize;
-            if (currentString.size() % columnSize > 0) numLines++;
+            int numLines = (int)currentString.size() / columnSize;
+            if ((int)currentString.size() % columnSize > 0) numLines++;
 
             size_t pos = 0;
 
@@ -69,7 +69,7 @@ public:
             lines[j] += lastElement;
 
             // Get and append the amount of tabs
-            size_t tabAmount = lastElement.size() / TabSize;
+            size_t tabAmount = (int)lastElement.size() / TabSize;
             tabAmount = columnWidths[i] - tabAmount;
             lines[j] += std::string(tabAmount, '\t');
 

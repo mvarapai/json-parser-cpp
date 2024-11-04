@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "json_parser.h"
 #include "utilstr.h"
+#include "query.h"
 
 TEST_CASE("Correctly find initial symbol position from trimmed string", "[JSONSource]")
 {
@@ -81,5 +82,51 @@ TEST_CASE("Scan index correctly", "[CLI]")
 	REQUIRE(str.at(pos) == '[');
 
 	REQUIRE(utilstr::ScanIndex(str, pos) == "13");
+	REQUIRE(pos == str.size());
+}
+
+TEST_CASE("Test Tokenize(..)", "[Expr]")
+{
+	std::string str = "(A.B[2] - 1.65) * 6 + C.D[A.B[3]]";
+	utilstr::ReplaceAllChars(str, " \t\n", "");
+
+	std::string token;
+	size_t pos = 0;
+	Tokenize(str, token, pos);
+	
+	REQUIRE(token == "(A.B[2]-1.65)");
+	REQUIRE(str.at(pos) == '*');
+
+	pos++;
+	Tokenize(str, token, pos);
+	REQUIRE(token == "6");
+	REQUIRE(str.at(pos) == '+');
+
+	// Try unary minus
+	str = "-A.B[2]+12";
+	pos = 0;
+	Tokenize(str, token, pos);
+	REQUIRE(token == "-A.B[2]");
+	REQUIRE(str.at(pos) == '+');
+
+	// Try string with one token
+	str = "A.B[2]";
+	pos = 0;
+	REQUIRE(!Tokenize(str, token, pos));
+	REQUIRE(token == str);
+	REQUIRE(pos == str.size());
+
+	// Try string with one token in parentheses
+	str = "(A.B[2])";
+	pos = 0;
+	REQUIRE(!Tokenize(str, token, pos));
+	REQUIRE(token == str);
+	REQUIRE(pos == str.size());
+
+	// Try string with a function
+	str = "size(A.B[2])";
+	pos = 0;
+	REQUIRE(!Tokenize(str, token, pos));
+	REQUIRE(token == str);
 	REQUIRE(pos == str.size());
 }

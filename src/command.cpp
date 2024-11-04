@@ -3,6 +3,7 @@
 #include "command.h"
 #include "json_parser.h"
 #include "utilstr.h"
+#include "query.h"
 
 std::string ProcessCommand(std::string command, JSONInterface& interface);
 
@@ -19,7 +20,13 @@ std::string ProcessInput(std::string input, JSONInterface& interface)
 		return ProcessCommand(input, interface);
 	}
 
-	return "Invalid expression.";
+	// Else, we are dealing with queries
+
+	utilstr::ReplaceAllChars(input, " \t\n", "");
+	Expr expr = Expr(input, interface);
+	std::cout << "Evaluated to " << expr.Eval().ToString() << std::endl;
+
+	return "";
 }
 
 std::string ProcessCommand(std::string input, JSONInterface& interface)
@@ -47,13 +54,13 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 
 		table.PrintLine({ "List of commands:", "" });
 		std::cout << std::endl;
-		table.PrintLine({ ":help (:h)", "Display the list of commands." });
-		table.PrintLine({ ":quit (:q)", "Exit the CLI." });
+		table.PrintLine({ ":help", "Display the list of commands." });
+		table.PrintLine({ ":quit", "Exit the CLI." });
 		std::cout << std::endl;
 
 		table.PrintLine({ ":current (--recursive=MAX_DEPTH) (--show-values)", "Displays info about current object." });
-		table.PrintLine({ ":select (:s) <expr>", "Select object member. Must also be an object." });
-		table.PrintLine({ ":back (--root)", "Move one object up the hierarchy." });
+		table.PrintLine({ ":select <expr>", "Select object member. Must also be an object." });
+		table.PrintLine({ ":back (<NUM_STEPS>) (--root)", "Move up the hierarchy." });
 
 		return "";
 	}
@@ -89,7 +96,7 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 
 						std::string numStr = arg.substr(readInt);
 
-						if (!utilstr::IsIntLiteral(numStr))
+						if (!utilstr::IsNumLiteral(numStr))
 						{
 							return "Enter valid MAX_DEPTH";
 						}
@@ -132,7 +139,7 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 			std::string arg = args[1];
 
 			// If entered a number of steps
-			if (utilstr::IsIntLiteral(arg))
+			if (utilstr::IsNumLiteral(arg))
 			{
 				stepsBack = std::stoi(arg);
 			}

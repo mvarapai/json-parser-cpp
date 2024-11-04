@@ -12,6 +12,7 @@
 #include <string>
 
 class JSONString;
+struct Either;
 
 namespace utilstr
 {
@@ -57,6 +58,7 @@ namespace utilstr
     // pos is an inout parameter
     std::string ScanIndex(std::string source, size_t& pos);
 
-    bool IsIntLiteral(std::string str);
+    bool IsNumLiteral(std::string str);
 
+    bool GetNumLiteralValue(std::string src, Either& result);
 };

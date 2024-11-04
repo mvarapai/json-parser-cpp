@@ -174,6 +174,7 @@ public:
 };
 
 class JSONInterface;
+class Expr;
 
 // Class to represent JSON syntax tree.
 class JSON
@@ -221,6 +222,12 @@ public:
     }
 
     static bool isLiteral(JSON_NODE_TYPE type) { return (int)type > 1; }
+
+    static bool isNumericLiteral(JSON_NODE_TYPE type) 
+    {
+        return type == JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT
+            || type == JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE;
+    }
 
 
     // Basic node object. Contains only type, cannot be instantiated.
@@ -371,12 +378,15 @@ public:
 
 std::string getLiteralValue(JSON::JSONNode* node);
 
+struct Either;
+
 // Class used to traverse JSON syntax tree
 class JSONInterface
 {
      JSON::JSONObject* currentObject;
      std::string currentObjectName = "~";
 
+     friend class Expr;
      JSON::JSONNode* tree_walk(std::string request);
 
 public:
@@ -414,4 +424,6 @@ public:
         }
         return false;
     }
+
+    bool GetValue(JSON::JSONNode* node, Either& value);
 };

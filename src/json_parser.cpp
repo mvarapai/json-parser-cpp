@@ -1,6 +1,7 @@
 #include "json_parser.h"
 #include "utilstr.h"
 #include "command.h"
+#include "query.h"
 
 #include <iostream>
 #include <cmath>
@@ -568,172 +569,20 @@ inline JSON::JSONNode* resolve_literal(JSONString body, JSON::JSONNode* parent)
 // Numerical is supposed to be of format 'x.xE(+/-)x', x denoting some integer.
 inline JSON::JSONNode* resolve_number(JSONString body, JSON::JSONNode* parent)
 {
-    // Start looking for numerical data
-    JSON::JSON_NODE_TYPE literalType = JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT;
-
-    bool fractional = false;    // true if '.' was detected
-    bool exponent = false;      // true if 'e/E' was detected
-
-    int exponentSign = 1;       // E(+/-)123
-    int sign = 1;               // Sign of the number
-    int part = 0;               // Start with whole part (0), and go in order
-    std::string number_str[3];  // 0 -> whole part, 1 -> fraction part, 2 -> exponent
-
-    // Special state where we want to retrieve the (optional) exponent sign.
-    bool waitForExponentSign = false;
-
-    // Start iterating through the string
-    for (size_t i = 0; i < body.Size(); i++)
-    {
-        const char c = body.at(i);
-
-        // For any digit that we discover
-        if (isdigit(c))
-        {
-            // Add the numerical to corresponding string
-            number_str[part] += c;
-            // No exponent sign specified, using '+' as default.
-            if (waitForExponentSign) waitForExponentSign = false;
-        }
-
-        // Unary minus
-        else if (c == '-' && i == 0)
-        {
-            sign = -1;
-        }
-
-        // Unary plus
-        else if (c == '+' && i == 0)
-        {
-            sign = 1;
-        }
-
-        // If previous element was 'e/E', we wait for the sign.
-        // By previous conditions, this brach assumes that the character
-        // is non-numeric, thus throwing an error if it is neither plus or minus.
-        else if (waitForExponentSign)
-        {
-            if (c == '+')
-            {
-                exponentSign = 1;
-            }
-            else if (c == '-')
-            {
-                exponentSign = -1;
-            }
-            else
-            {
-                body.PrintSyntaxMsg("Invalid literal.");
-                return nullptr;
-            }
-            // Exit the state of waiting for the sign
-            waitForExponentSign = false;
-        }
-
-        // Point discovered. Further action depends on the current state.
-        else if (c == '.')
-        {
-            // To this moment, no other point or exponent were discovered.
-            if (fractional || exponent)
-            {
-                body.PrintSyntaxMsg("Invalid literal.");
-                return nullptr;
-            }
-            // The state is changed to writing fraction value.
-            fractional = true;
-            part = 1;
-        }
-
-        // Exponent discovered. Further action depends on current state.
-        else if (c == 'e' || c == 'E')
-        {
-            // To be valid, we must not have discovered another exponent.
-            // It does not matter whether there is fractional part.
-            if (exponent)
-            {
-                body.PrintSyntaxMsg("Invalid literal.");
-                return nullptr;
-            }
-            // The state is changed to waiting for exponent sign.
-            // Afterwards, even if no sign provided, we read exponent value.
-            exponent = true;
-            waitForExponentSign = true;
-            part = 2;
-        }
-        // Invalid symbol detected.
-        else
-        {
-            body.PrintSyntaxMsg("Invalid literal.", SYNTAX_MSG_TYPE_ERROR, i);
-            return nullptr;
-        }
-    }
-
-    // Validation:
-    if (number_str[0].empty()                       // Whole part cannot be empty;
-        || (fractional && number_str[1].empty())    // If discovered '.', this part cannot be empty;
-        || (exponent && number_str[2].empty()))     // If discovered 'e/E', this part cannot be empty;
+    Either number;
+    if (!utilstr::GetNumLiteralValue(body.ToString(), number))
     {
         body.PrintSyntaxMsg("Invalid literal.");
         return nullptr;
     }
 
-    // At this point, we have:
-    //  1) A non-empty string with whole part, with sign stored in bool negative;
-    //  2) If fractional == true, non-empty string with fractional part;
-    //  3) If exponent == true, non-empty string with exponent, with sign stored in int exponentSign;
-
-    // Now, we need to do type inference:
-    //  Has negative exponent -> DOUBLE since we cannot guarantee that the result will be INT
-    //  Has fractional part -> DOUBLE
-    //  Otherwise -> INT
-    
-    // DOUBLE
-    if (fractional || (exponent && exponentSign == -1))
+    if (number.Type == EITHER_INT)
     {
-        // This is guaranteed to be non-empty
-        double num = std::stoi(number_str[0]);
-
-        // Add the fractional part if there is one.
-        if (fractional)
-        {
-            double frac = std::stoi(number_str[1]);
-            num += frac / (pow(10, (double)number_str[1].size()));
-        }
-
-        // Apply the sign
-        num *= (float)sign;
-
-        // If we use an exponent
-        if (exponent)
-        {
-            double exp = std::stoi(number_str[2]);
-            exp *= (float)exponentSign;
-            num *= pow(10.0, exp);
-        }
-
-        // Lastly, create the literal node.
-        return new JSON::JSONLiteral<double>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE, parent);
+        return new JSON::JSONLiteral<int>(number.NumInt, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT, parent);
     }
-    // INT
     else
     {
-        // This is guaranteed to be non-empty.
-        int num = std::stoi(number_str[0]);
-        num *= sign;
-        
-        // If we use an exponent
-        if (exponent)
-        {
-            // Here, exponent sign is guaranteed to be positive,
-            // so the exponent is calculated this way, since we
-            // want to avoid dealing with double in this case.
-            int exp = std::stoi(number_str[2]);
-            for (int i = 0; i < exp; i++)
-                num *= 10;
-        }
-
-        // Lastly, create the literal node.
-        return new JSON::JSONLiteral<int>(num, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT, parent);
+        return new JSON::JSONLiteral<double>(number.NumDouble, JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE, parent);
     }
 }
 
@@ -782,7 +631,7 @@ JSON::JSONNode* JSONInterface::tree_walk(std::string request)
             size_t indexNum;
 
             // At some point, we will encounter an int literal index
-            if (utilstr::IsIntLiteral(index)) indexNum = std::stoi(index);
+            if (utilstr::IsNumLiteral(index)) indexNum = std::stoi(index);
             else    // Do a recursive call
             {
                 JSON::JSONNode* indexNode = tree_walk(index);
@@ -1005,4 +854,21 @@ JSON::JSONNode* recursive_back(JSON::JSONNode* ptr, unsigned int steps)
 void JSONInterface::Back(unsigned int steps)
 {
     currentObject = (JSON::JSONObject*)recursive_back(currentObject, steps);
+}
+
+bool JSONInterface::GetValue(JSON::JSONNode* node, Either& value)
+{
+    if (node->GetType() == JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_INT)
+    {
+        value.Type = EITHER_INT;
+        GetValue<int>(node, value.NumInt);
+        return true;
+    }
+    if (node->GetType() == JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_DOUBLE)
+    {
+        value.Type = EITHER_DOUBLE;
+        GetValue<double>(node, value.NumDouble);
+        return true;
+    }
+    return false;
 }
