@@ -230,6 +230,7 @@ public:
     }
 
 
+
     // Basic node object. Contains only type, cannot be instantiated.
     // All elements of JSON syntax tree are of that object.
     class JSONNode
@@ -253,6 +254,7 @@ public:
         friend class JSONInterface;
     };
 
+   
 
     // JSON object - contains a list of identifiers and links further down the tree.
     class JSONObject : public JSONNode
@@ -386,6 +388,8 @@ class JSONInterface
      JSON::JSONObject* currentObject;
      std::string currentObjectName = "~";
 
+     friend std::string ProcessInput(std::string input, JSONInterface& interface);
+     friend bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& output);
      friend class Expr;
      JSON::JSONNode* tree_walk(std::string request);
 
@@ -426,4 +430,6 @@ public:
     }
 
     bool GetValue(JSON::JSONNode* node, Either& value);
+
+    
 };

@@ -153,7 +153,12 @@ std::string utilstr::ScanIndex(std::string source, size_t& pos)
         if (depth == 0)
         {
             pos = i + 1;
-            return source.substr(startPos, i - startPos);
+            std::string result = source.substr(startPos, i - startPos);
+            if (result == "")
+            {
+                std::cout << "[ERROR] Enter an index." << std::endl;
+            }
+            return result;
         }
     }
 

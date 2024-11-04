@@ -104,10 +104,14 @@ Either Mult(Either a, Either b);
 Either Div(Either a, Either b);
 
 class JSONInterface;
+bool Tokenize(std::string source, std::string& token, size_t& pos);
+bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& output);
 
 // a.b[a.b[1]].c
 class Expr
 {
+	friend bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& output);
+
 	unsigned int OpCode = EXPR_OP_INVALID;
 
 	Expr* lhs = nullptr;
@@ -121,4 +125,3 @@ public:
 	Expr() = default;
 };
 
-bool Tokenize(std::string source, std::string& token, size_t& pos);

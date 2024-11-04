@@ -527,7 +527,7 @@ inline JSON::JSONNode* resolve_list(JSONString body, JSON::JSONNode* parent)
     return list;
 }
 
-// If passed string is neither list nor object, it is dealth with as a literal.
+// If passed string is neither list nor object, it is dealt with as a literal.
 // Here, types bool and null are considered. For numerical, subfunction is called.
 inline JSON::JSONNode* resolve_literal(JSONString body, JSON::JSONNode* parent)
 {
@@ -625,6 +625,8 @@ JSON::JSONNode* JSONInterface::tree_walk(std::string request)
         if (c == '[')
         {
             std::string index = utilstr::ScanIndex(request, pos);
+
+            if (index == "") return nullptr;
 
             // Retrieve index value
 

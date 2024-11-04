@@ -49,10 +49,185 @@ bool Tokenize(std::string source, std::string& token, size_t& pos)
 	return false;
 }
 
+bool ScanFunction(std::string src, std::string& functionName, std::vector<std::string>& args)
+{
+	size_t argsBegin = 0;
+	argsBegin = src.find_first_of('(');
+
+	if (argsBegin == std::string::npos)
+	{
+		return false;
+	}
+
+	functionName = src.substr(0, argsBegin);
+
+	if (src.at(src.size() - 1) != ')')
+	{
+		std::cout << "Invalid function syntax." << std::endl;
+		return false;
+	}
+
+	std::string argsStr = src.substr(argsBegin);
+	argsStr = utilstr::TrimOneChar(argsStr);
+
+
+	std::string argument;
+	size_t _pos = 0;
+	while (utilstr::Split(argsStr, ',', argument, _pos))
+	{
+		args.push_back(argument);
+	}
+
+	return true;
+}
+
+bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& output)
+{
+	std::vector<std::string> args;
+	std::string function;
+
+	// Not a function
+	if (src.find_first_of('(') == src.npos)
+	{
+		return false;
+	}
+	
+	if (!ScanFunction(src, function, args)) return false;
+
+	// Now, we have a vector with arguments and are ready to process functions.
+
+	if (function == "min" || function == "max")
+	{
+		// With one argument, we are processing a list.
+		if (args.size() == 1)
+		{
+			JSON::JSONNode* node = jsonInterface.tree_walk(args[0]);
+			if (!node) return true;
+			if (node->GetType() != JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LIST)
+			{
+				std::cout << "Expected a list." << std::endl;
+				return true;
+			}
+			JSON::JSONList* list = (JSON::JSONList*)node;
+
+			std::vector<Either> numericElements;
+
+			for (JSON::JSONNode* e : list->elements)
+			{
+				if (!JSON::isNumericLiteral(e->GetType())) continue;
+
+				Either val;
+				jsonInterface.GetValue(e, val);
+				numericElements.push_back(val);
+			}
+
+			if (numericElements.size() == 0)
+			{
+				std::cout << "List empty or does not contain any numeric values." << std::endl;
+				return true;
+			}
+
+			if (function == "min")
+			{
+				Either minElement = numericElements[0];
+				for (Either val : numericElements)
+				{
+					if (val < minElement) minElement = val;
+				}
+				output = minElement;
+				return true;
+			}
+
+			if (function == "max")
+			{
+				Either maxElement = numericElements[0];
+				for (Either val : numericElements)
+				{
+					if (val > maxElement) maxElement = val;
+				}
+				output = maxElement;
+				return true;
+			}
+		}
+
+		// With more arguments, we are processing literals
+		else
+		{
+			std::vector<Either> elements;
+
+			for (std::string arg : args)
+			{
+				Expr expr(arg, jsonInterface);
+				elements.push_back(expr.Eval());
+			}
+
+			if (function == "min")
+			{
+				Either minValue = elements[0];
+
+				for (Either e : elements)
+				{
+					if (e < minValue) minValue = e;
+				}
+				output = minValue;
+				return true;
+			}
+
+			if (function == "max")
+			{
+				Either maxValue = elements[0];
+
+				for (Either e : elements)
+				{
+					if (e > maxValue) maxValue = e;
+				}
+				output = maxValue;
+				return true;
+			}
+		}
+	}
+	if (function == "size")
+	{
+		if (args.size() < 1)
+		{
+			std::cout << "Provide an object, list or string." << std::endl;
+			return true;
+		}
+
+		JSON::JSONNode* node = jsonInterface.tree_walk(args[0]);
+		if (!node) return true;
+
+		if (node->GetType() == JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LITERAL_STRING)
+		{
+			std::string val;
+			jsonInterface.GetValue<std::string>(node, val);
+
+			output = Either((int)val.size());
+			return true;
+		}
+		if (node->GetType() == JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_OBJECT)
+		{
+			JSON::JSONObject* obj = (JSON::JSONObject*)node;
+			output = Either((int)obj->members.size());
+			return true;
+		}
+		if (node->GetType() == JSON::JSON_NODE_TYPE::JSON_NODE_TYPE_LIST)
+		{
+			JSON::JSONList* list = (JSON::JSONList*)node;
+			output = Either((int)list->elements.size());
+			return true;
+		}
+		else
+		{
+			std::cout << "Expected an object, list or string." << std::endl;
+			return true;
+		}
+
+	}
+}
+
 Expr::Expr(std::string body, JSONInterface& jsonInterface)
 {
-	std::cout << "Received expression \"" << body << "\";" << std::endl;
-
 	// Trim all parentheses
 	while (utilstr::BeginsAndEndsWith(body, '(', ')'))
 	{
@@ -95,6 +270,14 @@ Expr::Expr(std::string body, JSONInterface& jsonInterface)
 			return;
 		}
 
+		Either val;
+		if (ProcessFunctions(body, jsonInterface, val))
+		{
+			OpCode = EXPR_OP_CONST;
+			value = val;
+			return;
+		}
+
 		// Process numeric JSON queries
 		else
 		{
@@ -130,40 +313,6 @@ Expr::Expr(std::string body, JSONInterface& jsonInterface)
 		}
 		return;
 	}
-
-		
-	//	// Function
-	//	else
-	//	{
-	//		size_t argsBegin = 0;
-	//		argsBegin = body.find_first_of('(');
-
-	//		if (argsBegin == std::string::npos)
-	//		{
-	//			std::cout << "Invalid function syntax" << std::endl;
-	//			return;
-	//		}
-
-	//		std::string function = body.substr(0, argsBegin);
-
-	//		std::string args = body.substr(argsBegin);
-	//		args = utilstr::TrimOneChar(args);
-
-	//		std::vector<std::string> arguments;
-
-	//		std::string argument;
-	//		size_t _pos;
-	//		while (utilstr::Split(args, ',', argument, _pos))
-	//		{
-	//			arguments.push_back(argument);
-	//		}
-
-	//		
-	//	}
-	//	
-
-	//	return;
-	//}
 	
 	// If the program has reached this point, there are some
 	// binary operators to process.

@@ -23,8 +23,32 @@ std::string ProcessInput(std::string input, JSONInterface& interface)
 	// Else, we are dealing with queries
 
 	utilstr::ReplaceAllChars(input, " \t\n", "");
-	Expr expr = Expr(input, interface);
-	std::cout << "Evaluated to " << expr.Eval().ToString() << std::endl;
+
+	if (utilstr::Contains(input, '+')
+		|| utilstr::Contains(input, '-')
+		|| utilstr::Contains(input, '*')
+		|| utilstr::Contains(input, '/')
+		|| utilstr::Contains(input, '(')
+		|| isdigit(input[0]))
+	{
+		Expr expr = Expr(input, interface);
+		std::cout << expr.Eval().ToString() << std::endl;
+	}
+	// If arithmetic is not used, simple data query can be used.
+	else
+	{
+		JSON::JSONNode* node = interface.tree_walk(input);
+		if (!node) return "";
+
+		if (!JSON::isLiteral(node->GetType()))
+		{
+			std::cout << "To view an object or a list, use :current." << std::endl;
+			return "";
+		}
+
+		return getLiteralValue(node);
+	}
+	
 
 	return "";
 }
@@ -59,7 +83,7 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 		std::cout << std::endl;
 
 		table.PrintLine({ ":current (--recursive=MAX_DEPTH) (--show-values)", "Displays info about current object." });
-		table.PrintLine({ ":select <expr>", "Select object member. Must also be an object." });
+		table.PrintLine({ ":select <EXPR>", "Select object member. Must also be an object." });
 		table.PrintLine({ ":back (<NUM_STEPS>) (--root)", "Move up the hierarchy." });
 
 		return "";
