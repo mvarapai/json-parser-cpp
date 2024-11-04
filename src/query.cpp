@@ -148,6 +148,8 @@ bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& out
 				output = maxElement;
 				return true;
 			}
+
+			return true;
 		}
 
 		// With more arguments, we are processing literals
@@ -184,6 +186,8 @@ bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& out
 				output = maxValue;
 				return true;
 			}
+
+			return true;
 		}
 	}
 	if (function == "size")
@@ -224,6 +228,7 @@ bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& out
 		}
 
 	}
+	return false;
 }
 
 Expr::Expr(std::string body, JSONInterface& jsonInterface)

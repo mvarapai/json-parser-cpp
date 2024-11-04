@@ -123,5 +123,11 @@ public:
 	Either Eval();
 	Expr(std::string, JSONInterface& jsonInterface);
 	Expr() = default;
+
+	~Expr()
+	{
+		if (lhs) delete lhs;
+		if (rhs) delete rhs;
+	}
 };
 
