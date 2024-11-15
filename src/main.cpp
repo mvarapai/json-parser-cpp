@@ -38,9 +38,11 @@ int main(int argc, char* argv[])
     std::cout << welcome_msg << std::endl;
 
     CommandInterface cmdInterface;
-    cmdInterface.RegisterCommand(CommandHelp(cmdInterface));
-    cmdInterface.RegisterCommand(CommandQuit());
-    cmdInterface.RegisterCommand(CommandCurrent());
+    cmdInterface.RegisterCommand(new CommandHelp(cmdInterface));
+    cmdInterface.RegisterCommand(new CommandQuit());
+    cmdInterface.RegisterCommand(new CommandCurrent(interface));
+    cmdInterface.RegisterCommand(new CommandSelect(interface));
+    cmdInterface.RegisterCommand(new CommandBack(interface));
 
     std::string command;
 
@@ -48,20 +50,7 @@ int main(int argc, char* argv[])
     {
         std::cout << "json_eval>";
         std::getline(std::cin, command);
-
-        CommandLineInterpreter cli(command.substr(1));
-        cli.Interpret();
-
-        for (const Argument& a : cli.GetArgs())
-        {
-            std::cout << "Name: " << a.ToString() << ", Value: " << a.GetValue() << std::endl;
-        }
-
-        for (const Token& t : cli.GetTokens())
-        {
-            std::cout << "Token value: " << t.GetValue() << ", Index: " << t.GetIndex() << std::endl;
-        }
-        //ProcessInput(command, interface, cmdInterface);
+        ProcessInput(command, interface, cmdInterface);
     }
 
     return 0;

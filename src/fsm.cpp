@@ -64,7 +64,7 @@ bool CommandLineInterpreter::Interpret()
 				argBody = contents.substr(prevPos, pos - prevPos);
 
 				// Push new argument
-				arguments.push_back(Argument(argBody));
+				arguments.push_back(Argument(argBody, false));
 				break;
 			}
 
@@ -77,12 +77,12 @@ bool CommandLineInterpreter::Interpret()
 				pos = utilstr::FindFirstOfOutsideString(contents, " ", pos);
 				std::string val = contents.substr(prevPos, pos - prevPos);
 
-				arguments.push_back(Argument(argBody, true, val));
+				arguments.push_back(Argument(argBody, false, true, val));
 			}
 
 			else
 			{
-				arguments.push_back(Argument(argBody));
+				arguments.push_back(Argument(argBody, false));
 			}
 		}
 		else if (utilstr::BeginsWith(contents, "-", pos))
@@ -104,7 +104,7 @@ bool CommandLineInterpreter::Interpret()
 
 				for (const char& c : argBody)
 				{
-					arguments.push_back(Argument(std::string(1, c)));
+					arguments.push_back(Argument(std::string(1, c), true));
 				}
 
 				break;
@@ -123,17 +123,17 @@ bool CommandLineInterpreter::Interpret()
 				for (size_t i = 0; i < argBody.size() - 1; i++)
 				{
 					char c = argBody.at(i);
-					arguments.push_back(Argument(std::string(1, c)));
+					arguments.push_back(Argument(std::string(1, c), true));
 				}
 
 				// Except for the last
-				arguments.push_back(Argument(std::string(1, argBody.back()), true, val));
+				arguments.push_back(Argument(std::string(1, argBody.back()), true, true, val));
 			}
 
 			else
 			{
 				for (const char& c : argBody)
-					arguments.push_back(Argument(std::string(1, c)));
+					arguments.push_back(Argument(std::string(1, c), true));
 			}
 		}
 		else

@@ -4,8 +4,9 @@
 #include "json_parser.h"
 #include "utilstr.h"
 #include "query.h"
+#include "fsm.h"
 
-std::string ProcessCommand(std::string command, 
+void ProcessCommand(std::string command, 
 	JSONInterface& jsonInterface, 
 	CommandInterface& cmdInterface);
 
@@ -55,131 +56,94 @@ void ProcessInput(std::string input, JSONInterface& jsonInterface, CommandInterf
 	}
 }
 
-std::string ProcessCommand(std::string input, JSONInterface& jsonInterface, CommandInterface& cmdInterface)
+void ProcessCommand(std::string input, JSONInterface& jsonInterface, CommandInterface& cmdInterface)
 {
-	std::vector<std::string> args;
-
-	std::string substring;
-	size_t pos = 0;
-	while (utilstr::Split(input, ' ', substring, pos))
+	if (input.empty())
 	{
-		args.push_back(substring);
+		std::cout << "Expected a command." << std::endl;
+		return;
 	}
 
-	std::string command = args[0];
+	CommandLineInterpreter interpreter(input);
+	interpreter.Interpret();
 
-	if (command == "quit" || command == "q")
+	Command const* cmd = cmdInterface.FindCommand(interpreter.GetCommandName());
+
+	if (!cmd)
 	{
-		std::cout << "Exiting.." << std::endl;
-		exit(0);
-	}
-	
-	if (command == "help" || command == "h")
-	{
-		ConsoleTable<2> table({ 7, 9}, 0);
-
-		table.PrintLine({ "List of commands:", "" });
-		std::cout << std::endl;
-		table.PrintLine({ ":help", "Display the list of commands." });
-		table.PrintLine({ ":quit", "Exit the CLI." });
-		std::cout << std::endl;
-
-		table.PrintLine({ ":current (--recursive=MAX_DEPTH) (--show-values)", "Displays info about current object." });
-		table.PrintLine({ ":select <EXPR>", "Select object member. Must also be an object." });
-		table.PrintLine({ ":back (<NUM_STEPS>) (--root)", "Move up the hierarchy." });
-
-		return "";
+		std::cout << "Unknown command. :help for list of available commands." << std::endl;
+		return;
 	}
 
-	if (command == "current" || command == "c")
-	{
-		bool showValues = false;
-		unsigned int maxDepth = 0;
+	cmd->Execute(interpreter);
+}
 
-		// Some additional arguments supplied
-		if (args.size() > 1)
+void CommandCurrent::Execute(const CommandLineInterpreter& interpreter) const
+{
+	bool showValues = false;
+	unsigned int maxDepth = 0;
+
+	for (const Argument& arg : interpreter.GetArgs())
+	{
+		std::string argName = arg.ToString();
+
+		if (argName == "show-values" || argName == "s") showValues = true;
+
+		if (argName == "recursive" || argName == "r")
 		{
-			for (int i = 1; i < args.size(); i++)
+			if (!arg.HasValue())
 			{
-
-				// --recursive
-				std::string arg = args[i];
-				if (arg.substr(0, 11) == "--recursive" || arg.substr(0, 2) == "-r")
-				{
-					if (utilstr::Contains(arg, '='))
-					{
-						size_t readInt = 0;
-
-						if (arg.substr(0, 12) == "--recursive=")
-						{
-							readInt = 12;
-						}
-
-						else if (arg.substr(0, 3) == "-r=")
-						{
-							readInt = 3;
-						}
-
-						std::string numStr = arg.substr(readInt);
-
-						if (!utilstr::IsNumLiteral(numStr))
-						{
-							return "Enter valid MAX_DEPTH";
-						}
-
-						maxDepth = std::stoi(numStr);
-					}			
-					else
-					{
-						maxDepth = UINT32_MAX;
-					}
-				}
-
-				// --show-values
-				if (arg == "--show-values" || arg == "-s")
-				{
-					showValues = true;
-				}
-
-			}
-		}
-
-		return jsonInterface.ListMembers(showValues, maxDepth);
-	}
-
-	if (command == "select" || command == "s")
-	{
-		if (args.size() < 2)
-		{
-			return "Provide an expression.\n";
-		}
-		return jsonInterface.Select(args[1]);
-	}
-
-	if (command == "back" || command == "b")
-	{
-		unsigned int stepsBack = 1;
-
-		if (args.size() > 1)
-		{
-			std::string arg = args[1];
-
-			// If entered a number of steps
-			if (utilstr::IsNumLiteral(arg))
-			{
-				stepsBack = std::stoi(arg);
+				maxDepth = UINT32_MAX;
+				continue;
 			}
 
-			// If want to return to root
-			if (arg == "--root" || arg == "-r")
+			if (!utilstr::IsNumLiteral(arg.GetValue()))
 			{
-				stepsBack = UINT32_MAX;
+				std::cout << "MAX_DEPTH must be a number." << std::endl;
+				return;
 			}
-		}
 
-		jsonInterface.Back(stepsBack);
-		return "";
+			maxDepth = std::stoi(arg.GetValue());
+		}
 	}
 
-	return "Unknown command. :help (:h) for help.";
+	json.ListMembers(showValues, maxDepth);
+}
+
+void CommandSelect::Execute(const CommandLineInterpreter& interpreter) const
+{
+	if (interpreter.GetTokens().size() < 1)
+	{
+		std::cout << "Enter an object to select." << std::endl;
+		return;
+	}
+
+	Token token = interpreter.GetTokens().at(0);
+
+	json.Select(token.GetValue());
+}
+
+void CommandBack::Execute(const CommandLineInterpreter& interpreter) const
+{
+	unsigned int stepsBack = 1;
+
+	for (const Token& t : interpreter.GetTokens())
+	{
+		if (utilstr::IsNumLiteral(t.GetValue()))
+		{
+			stepsBack = std::stoi(t.GetValue());
+			break;
+		}
+	}
+
+	for (const Argument& arg : interpreter.GetArgs())
+	{
+		if (arg == ArgumentAlias("root", "r"))
+		{
+			stepsBack = UINT32_MAX;
+			break;
+		}
+	}
+
+	json.Back(stepsBack);
 }

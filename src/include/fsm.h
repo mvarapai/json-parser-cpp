@@ -25,12 +25,22 @@ public:
 	unsigned int GetIndex() const { return index; }
 };
 
+struct ArgumentAlias
+{
+	std::string arg;
+	std::string alias;
+
+	ArgumentAlias(std::string arg, std::string alias)
+		: arg(arg), alias(alias) { }
+};
+
 struct Argument
 {
 private:
 	// Interpret -rs as --recursive --show-values.
 	// Must be two different arguments.
 
+	bool aliased = false;;
 	std::string argument;
 
 	bool hasValue = false;
@@ -43,10 +53,15 @@ public:
 	std::string ToString() const { return argument; }
 
 	// Operator to compare argument names.
-	bool operator==(const std::string& rhs) const { return argument == rhs; }
+	bool operator==(const ArgumentAlias& rhs) const 
+	{
+		if (aliased) return argument == rhs.alias;
+		return argument == rhs.arg;
+	}
 
-	Argument(std::string argument, bool hasValue = false, std::string value = std::string())
-		: argument(argument), hasValue(hasValue), value(value) { }
+	Argument(std::string argument, bool aliased, 
+		bool hasValue = false, std::string value = std::string())
+		: argument(argument), hasValue(hasValue), value(value), aliased(aliased) { }
 };
 
 // Stores current state of reading the string.
