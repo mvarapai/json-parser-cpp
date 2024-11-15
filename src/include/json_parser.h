@@ -381,6 +381,7 @@ public:
 std::string getLiteralValue(JSON::JSONNode* node);
 
 struct Either;
+class CommandInterface;
 
 // Class used to traverse JSON syntax tree
 class JSONInterface
@@ -388,7 +389,7 @@ class JSONInterface
      JSON::JSONObject* currentObject;
      std::string currentObjectName = "~";
 
-     friend std::string ProcessInput(std::string input, JSONInterface& interface);
+     friend void ProcessInput(std::string, JSONInterface&, CommandInterface&);
      friend bool ProcessFunctions(std::string src, JSONInterface& jsonInterface, Either& output);
      friend class Expr;
      JSON::JSONNode* tree_walk(std::string request);

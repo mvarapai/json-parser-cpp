@@ -12,6 +12,7 @@
 #include <json_parser.h>
 
 #include "command.h"
+#include "fsm.h"
 
 // Entry point to the program
 int main(int argc, char* argv[])
@@ -36,12 +37,31 @@ int main(int argc, char* argv[])
     welcome_msg += "Current file: " + path;
     std::cout << welcome_msg << std::endl;
 
+    CommandInterface cmdInterface;
+    cmdInterface.RegisterCommand(CommandHelp(cmdInterface));
+    cmdInterface.RegisterCommand(CommandQuit());
+    cmdInterface.RegisterCommand(CommandCurrent());
+
     std::string command;
+
     while (true)
     {
         std::cout << "json_eval>";
         std::getline(std::cin, command);
-        std::cout << ProcessInput(command, interface) << std::endl;
+
+        CommandLineInterpreter cli(command.substr(1));
+        cli.Interpret();
+
+        for (const Argument& a : cli.GetArgs())
+        {
+            std::cout << "Name: " << a.ToString() << ", Value: " << a.GetValue() << std::endl;
+        }
+
+        for (const Token& t : cli.GetTokens())
+        {
+            std::cout << "Token value: " << t.GetValue() << ", Index: " << t.GetIndex() << std::endl;
+        }
+        //ProcessInput(command, interface, cmdInterface);
     }
 
     return 0;

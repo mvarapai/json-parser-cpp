@@ -5,19 +5,23 @@
 #include "utilstr.h"
 #include "query.h"
 
-std::string ProcessCommand(std::string command, JSONInterface& interface);
+std::string ProcessCommand(std::string command, 
+	JSONInterface& jsonInterface, 
+	CommandInterface& cmdInterface);
 
-std::string ProcessInput(std::string input, JSONInterface& interface)
+void ProcessInput(std::string input, JSONInterface& jsonInterface, CommandInterface& cmdInterface)
 {
 	if (input.empty())
 	{
-		return "Enter an expression.";
+		std::cout << "Enter an expression." << std::endl;
+		return;
 	}
 
 	if (input.front() == ':')
 	{
 		input.erase(0, 1);
-		return ProcessCommand(input, interface);
+		ProcessCommand(input, jsonInterface, cmdInterface);
+		return;
 	}
 
 	// Else, we are dealing with queries
@@ -31,29 +35,27 @@ std::string ProcessInput(std::string input, JSONInterface& interface)
 		|| utilstr::Contains(input, '(')
 		|| isdigit(input[0]))
 	{
-		Expr expr = Expr(input, interface);
+		Expr expr = Expr(input, jsonInterface);
 		std::cout << expr.Eval().ToString() << std::endl;
 	}
 	// If arithmetic is not used, simple data query can be used.
 	else
 	{
-		JSON::JSONNode* node = interface.tree_walk(input);
-		if (!node) return "";
+		JSON::JSONNode* node = jsonInterface.tree_walk(input);
+		if (!node) return;
 
 		if (!JSON::isLiteral(node->GetType()))
 		{
 			std::cout << "To view an object or a list, use :current." << std::endl;
-			return "";
+			return;
 		}
 
-		return getLiteralValue(node);
+		std::cout << getLiteralValue(node) << std::endl;
+		return;
 	}
-	
-
-	return "";
 }
 
-std::string ProcessCommand(std::string input, JSONInterface& interface)
+std::string ProcessCommand(std::string input, JSONInterface& jsonInterface, CommandInterface& cmdInterface)
 {
 	std::vector<std::string> args;
 
@@ -142,7 +144,7 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 			}
 		}
 
-		return interface.ListMembers(showValues, maxDepth);
+		return jsonInterface.ListMembers(showValues, maxDepth);
 	}
 
 	if (command == "select" || command == "s")
@@ -151,7 +153,7 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 		{
 			return "Provide an expression.\n";
 		}
-		return interface.Select(args[1]);
+		return jsonInterface.Select(args[1]);
 	}
 
 	if (command == "back" || command == "b")
@@ -175,7 +177,7 @@ std::string ProcessCommand(std::string input, JSONInterface& interface)
 			}
 		}
 
-		interface.Back(stepsBack);
+		jsonInterface.Back(stepsBack);
 		return "";
 	}
 

@@ -61,4 +61,8 @@ namespace utilstr
     bool IsNumLiteral(std::string str);
 
     bool GetNumLiteralValue(std::string src, Either& result);
+
+    size_t FindFirstOfOutsideString(std::string str, std::string target, size_t _pos);
+
+    bool BeginsWith(std::string str, std::string target, size_t pos);
 };

@@ -9,10 +9,12 @@
 #include <string>
 #include <iostream>
 #include <array>
+#include <vector>
 
 class JSONInterface;
+class CommandInterface;
 
-std::string ProcessInput(std::string input, JSONInterface& interface);
+void ProcessInput(std::string, JSONInterface&, CommandInterface&);
 
 template <int N>
 class ConsoleTable
@@ -101,5 +103,109 @@ public:
         std::string offsetStr = std::string(offset, '\t');
 
         std::cout << offsetStr + separator << std::endl;
+    }
+};
+
+// Class to represent possible commands.
+// Supposed to be extensible.
+class Command
+{
+protected:
+    friend class CommandInterface;
+    friend class CommandHelp;
+
+    // Only specified at object level.
+    const std::string name;
+    const std::string alias;
+
+    // For correct :help output
+    const std::string cmdHelpSyntax;
+    const std::string cmdHelpDesc;
+
+    // Virtual function for commands to implement.
+    virtual void Execute(const std::vector<std::string>& args) { }
+
+    Command(const std::string name, const std::string alias,
+        const std::string syntax, const std::string desc) 
+        : name(name), alias(alias), cmdHelpSyntax(syntax), cmdHelpDesc(desc) { }
+};
+
+class CommandInterface
+{
+    friend class CommandHelp;
+    std::vector<Command> commands;
+
+public:
+    CommandInterface() = default;
+
+    // Return a pointer to const instance of Command
+    // if search was successful, nullptr otherwise.
+    // Forbids modifying data at returned location.
+    Command const* FindCommand(std::string cmdName) const
+    {
+        for (const Command& c : commands) 
+            if (cmdName == c.name || cmdName == c.alias) return &c;
+        return nullptr;
+    }
+
+    // Push command in the argument to the list of commands.
+    void RegisterCommand(const Command& cmd)
+    {
+        if (FindCommand(cmd.name))
+        {
+            std::cout << "Tried to register already defined command \"" 
+                << cmd.name << "\"." << std::endl;
+            return;
+        }
+        commands.push_back(cmd);
+    }
+
+};
+
+class CommandQuit : public Command
+{
+public:
+    CommandQuit() : Command("quit", "q", ":quit", "Exit the CLI.") { }
+
+    void Execute(const std::vector<std::string>& args) override
+    {
+        std::cout << "Exiting.." << std::endl;
+        exit(0);
+    }
+};
+
+class CommandHelp : public Command
+{
+    CommandInterface& cmdInterface;
+
+public:
+    CommandHelp(CommandInterface& interface) 
+        : Command("help", "h", ":help", "Display the list of commands"),
+            cmdInterface(interface) { }
+
+    void Execute(const std::vector<std::string>& args) override
+    {
+        ConsoleTable<2> table({ 7, 9 }, 0);
+
+        table.PrintLine({ "List of commands:", "" });
+        std::cout << std::endl;
+
+        for (const Command& c : cmdInterface.commands)
+        {
+            table.PrintLine({ c.cmdHelpSyntax, c.cmdHelpDesc });
+        }
+    }
+};
+
+class CommandCurrent : public Command
+{
+public:
+    CommandCurrent() : Command("current", "c", 
+        ":current (--recursive=MAX_DEPTH) (--show-values)", 
+        "Displays info about current object.") { }
+
+    void Execute(const std::vector<std::string>& args) override
+    {
+
     }
 };

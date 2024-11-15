@@ -337,3 +337,33 @@ bool utilstr::GetNumLiteralValue(std::string src, Either& result)
         return true;
     }
 }
+
+size_t utilstr::FindFirstOfOutsideString(std::string str, std::string target, size_t _pos)
+{
+    bool inString = false;
+
+    while (_pos < str.size())
+    {
+        char c = str.at(_pos);
+
+        if (c == '"')
+        {
+            if (_pos == 0) inString = true;
+            else if (str.at(_pos - 1) != '\\') inString = !inString;
+        }
+
+        if (Contains(target, c) && !inString)
+            return _pos;
+
+        _pos++;
+    }
+
+    return str.size();
+}
+
+bool utilstr::BeginsWith(std::string str, std::string target, size_t pos)
+{
+    if ((str.size() - pos) < target.size()) return false;
+
+    return str.substr(pos, target.size()) == target;
+}
