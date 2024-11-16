@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_map>
 #include <iostream>
+#include <vector>
 
 #define SYNTAX_MSG_TYPE_ERROR 0
 #define SYNTAX_MSG_TYPE_WARNING 1

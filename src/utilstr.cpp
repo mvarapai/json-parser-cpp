@@ -10,6 +10,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <math.h>
 
 //  Replaces all given substrings
 std::string utilstr::ReplaceAll(std::string& str, const std::string& from, const std::string& to)

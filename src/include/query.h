@@ -77,7 +77,7 @@ struct Either
 		else return NumInt;
 	}
 
-	Either& operator=(Either& rhs)
+	Either& operator=(const Either& rhs)
 	{
 		Type = rhs.Type;
 		if (rhs.Type == EITHER_INT)
