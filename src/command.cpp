@@ -65,8 +65,11 @@ void ProcessCommand(std::string input, JSONInterface& jsonInterface, CommandInte
 	}
 
 	CommandLineInterpreter interpreter(input);
-	interpreter.Interpret();
 
+	// If interpreter outputs an error message, do not proceed with the command execution.
+	if (!interpreter.Interpret()) return;
+
+	// Try to find registered command
 	Command const* cmd = cmdInterface.FindCommand(interpreter.GetCommandName());
 
 	if (!cmd)
@@ -75,6 +78,7 @@ void ProcessCommand(std::string input, JSONInterface& jsonInterface, CommandInte
 		return;
 	}
 
+	// In the end, execute the command.
 	cmd->Execute(interpreter);
 }
 
